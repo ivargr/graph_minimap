@@ -1,0 +1,6 @@
+.idea
+*.egg-info
+mhc_graph
+*.db
+*.fa
+*.tsv
