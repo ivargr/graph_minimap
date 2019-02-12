@@ -1,7 +1,7 @@
 import sys
 from offsetbasedgraph import Graph, SequenceGraph, NumpyIndexedInterval
 from local_graph_aligner import LocalGraphAligner
-from math import ceil
+from math import ceil, log
 import logging
 debug_read = False
 if len(sys.argv) > 5:
@@ -232,17 +232,19 @@ class Chain:
         node = -first_anchor.node
         offset = graph.blocks[-node].length() - first_anchor.offset
         #print("ALIGNING BEFORE FIRST ANCHOR from pos %d:%d" % (node, offset))
-        sequence_before_first_anchor = read_sequence[0:first_anchor.read_offset+k-1]  #  numeric_reverse_compliment(numeric_sequence[0:first_anchor.read_offset+k-1])
+        sequence_before_first_anchor = sequence_graph._reverse_compliment(read_sequence[0:first_anchor.read_offset+k-1])  #  numeric_reverse_compliment(numeric_sequence[0:first_anchor.read_offset+k-1])
         """
         aligner = SingleSequenceAligner(graph, sequence_graph, node,
                                         offset, sequence_before_first_anchor,
                                         n_mismatches_allowed=n_mismatches_allowed,
                                         n_mismatches_init=n_mismatches, print_debug=debug_read)
         """
+        logging.debug("Sequence before first anchor: %s" % sequence_before_first_anchor)
         aligner = LocalGraphAligner(graph, sequence_graph, sequence_before_first_anchor, linear_ref_nodes_this_chr, node, offset)
         #aligner.align()
         #alignment_before = aligner.get_alignment()
         alignment_before, score_before = aligner.align()
+        logging.debug("Score before first anchor: %d" % score_before)
         return Alignment(alignment_before, alignment_after, score_before + score_after,
                          True, chromosome, first_anchor.position)
 
@@ -393,9 +395,22 @@ class Alignments:
         self.alignments = alignments
         self.primary_alignment = None
         self._set_primary_alignment()
+        self._set_mapq()
 
-    def set_mapq(self):
-        pass
+    def _set_mapq(self):
+        primary_score = self.primary_alignment.score
+        sorted_alignments = sorted(self.alignments, reverse=True, key=lambda a: a.score)
+        secondary_score = 0
+        if len(sorted_alignments) > 1:
+            secondary_score = sorted_alignments[1].score
+
+        n_alignments = len([a for a in self.alignments if a.score > 0.9 * secondary_score])
+        primary_to_secondary_diff = primary_score - secondary_score
+        logging.debug("Primary - secondary: %d" % primary_to_secondary_diff)
+        mapq = 10 / log(10) * (log(2) * (primary_score - secondary_score) - log(n_alignments))
+        mapq = int(max(0, min(60, mapq)))
+        logging.debug("Computed mapq=%d. Primary score: %d. Secondary score: %d. N alignments: %d" % (mapq, primary_score, secondary_score, n_alignments))
+        self.mapq = mapq
 
     def primary_is_correctly_aligned(self, correct_chromosome, correct_position, threshold=150):
         if not self.primary_alignment:
@@ -476,6 +491,8 @@ class ChainResult:
 
 def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mismatches_allowed=7, k=21):
     chains = get_chains(sequence, index)
+    logging.debug("=== CHAINS FOUND ===")
+    logging.debug(chains)
     chains = ChainResult(chains)
     alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=k)
     return alignments, chains
@@ -512,6 +529,8 @@ if __name__ == "__main__":
     n_correctly_aligned = 0
     n_aligned = 0
     n_secondary_correct = 0
+    n_mapq_60 = 0
+    n_mapq_60_and_wrong = 0
 
     graph_dir = sys.argv[3]
     chromosomes = sys.argv[4].split(",")
@@ -534,18 +553,23 @@ if __name__ == "__main__":
         #print("%d alignments" % len(alignments.alignments))
         if alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
             n_correctly_aligned += 1
-        else:
-            print(name)
 
         if alignments.primary_alignment is not False:
             n_aligned += 1
 
+        if alignments.mapq == 60:
+            n_mapq_60 += 1
+            if not alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
+                n_mapq_60_and_wrong += 1
+                print(name)
+
+
         if alignments.any_alignment_is_correct(correct_chrom, correct_pos, threshold=150):
             n_secondary_correct += 1
 
-
         if len(chains.chains) > 500:
             logging.warning("%s has many chains" % name)
+
         #print(name, len(mapping.chains))
         #print(name, correct_pos, mapping.get_linear_ref_position() - correct_pos, mapping.has_chain_close_to_position(correct_pos))
 
@@ -564,12 +588,13 @@ if __name__ == "__main__":
         if debug_read:
             break
 
-        if i >= 10000:
+        if i >= 1000:
             break
 
     print("Total reads: %d" % i)
     print("N managed to aligne somewhere: %d" % n_aligned)
     print("N correctly aligned: %d" % n_correctly_aligned)
+    print("N correctly aligned among mapq 60: %d/%d" % (n_mapq_60 - n_mapq_60_and_wrong, n_mapq_60))
     print("N a secondary alignment is correct: %d" % n_secondary_correct)
     print("N correct chains found: %d" % n_correct_chain_found)
     print("N best chain is correct one: %d" % n_best_chain_is_correct)

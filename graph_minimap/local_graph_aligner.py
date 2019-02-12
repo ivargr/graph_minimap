@@ -5,7 +5,13 @@ from skbio.alignment import StripedSmithWaterman
 
 class LocalGraphAligner:
     def __init__(self, graph, sequence_graph, read_sequence, linear_ref_nodes, node, offset):
+        assert len(read_sequence) > 0
         self.graph = graph
+        self.is_reverse = False
+        self.adj_list = self.graph.adj_list
+        if node < 0:
+            self.is_reverse = True
+            self.adj_list = self.graph.reverse_adj_list
         self.sequence_graph = sequence_graph
         self.read_sequence = read_sequence
         self.linear_ref_nodes = linear_ref_nodes
@@ -28,7 +34,7 @@ class LocalGraphAligner:
                 end_offset = node_length - (length_traversed - n_base_pairs)
                 break
 
-            next_nodes = self.graph.adj_list[current_node]
+            next_nodes = self.adj_list[current_node]
             assert len(next_nodes) > 0
             if len(next_nodes) == 0:
                 break
@@ -77,12 +83,13 @@ class LocalGraphAligner:
 
             logging.debug("Searching from node %d" % current_node)
 
-            if len(current_reference_sequence) > n_base_pairs_to_align:
+            if len(current_reference_sequence) >= n_base_pairs_to_align:
                 break
 
             self.aligned_nodes.append(current_node)
-            possible_next_nodes = self.graph.adj_list[current_node]
+            possible_next_nodes = self.adj_list[current_node]
             if len(possible_next_nodes) == 0:
+                logging.debug("   No more nodes in graph")
                 break
             assert len(possible_next_nodes) > 0, "No more nodes in graph from node %d. Is alignment outside graph?" % current_node
             if False and len(possible_next_nodes) == 1:
@@ -106,7 +113,7 @@ class LocalGraphAligner:
                     best_scoring_node = possible_next_node
 
             final_score = best_score
-            assert best_scoring_node > 0
+            assert best_scoring_node != 0
             logging.debug("    Chose next node %d" % best_scoring_node)
             current_node = best_scoring_node
 
