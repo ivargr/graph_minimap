@@ -18,10 +18,13 @@ class InvalidKmerError(Exception):
 
 
 def make_databse(chromosome):
+    if chromosome != "all":
+        chromosome = "chr" + chromosome
+
     # Remove old first
-    if os.path.isfile("minimizers_chr%s.db" % chromosome):
-        os.remove("minimizers_chr%s.db" % chromosome)
-    minimizer_db = sqlite3.connect("minimizers_chr%s.db" % chromosome)
+    if os.path.isfile("minimizers_%s.db" % chromosome):
+        os.remove("minimizers_%s.db" % chromosome)
+    minimizer_db = sqlite3.connect("minimizers_%s.db" % chromosome)
     c = minimizer_db.cursor()
     c.execute("create table minimizers (minimizer_hash int, chromosome int, linear_offset int, node int, offset int, minimizer_offset);")
     c.execute("create index minimizer_hash on minimizers (minimizer_hash);")

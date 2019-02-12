@@ -13,6 +13,8 @@ class Minimizers:
         self.database = database
 
     def add_minimizer(self, node, position, hash, chromosome, linear_start):
+        if chromosome == "X":
+            chromosome = 23
         if self.database is not None:
             # Add to the database
             self.database.execute(
@@ -25,8 +27,8 @@ class Minimizers:
         for minimizer in self.minimizers:
             if minimizer[0] == node and minimizer[1] == position:
                 return True
-
         return False
+
 
 
 class MinimizerFinder:

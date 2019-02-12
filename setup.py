@@ -9,7 +9,7 @@ setup(name='graph_minimap',
       license='MIT',
       zip_safe=False,
       install_requires=['numpy', 'python-coveralls', 'pyvg', 'sortedcontainers',
-                        'pyfaidx', 'offsetbasedgraph==2.1.3', 'tqdm'],
+                        'pyfaidx', 'scikit-bio', 'tqdm'],
       classifiers=[
             'Programming Language :: Python :: 3'
       ],

@@ -40,32 +40,6 @@ def find_critical_nodes(graph, linear_ref):
         continue
 
 
-        #print("   Prev nodes: %s" % prev_nodes)
-        edge_counter -= len(prev_nodes)
-
-        if edge_counter == 0:
-            # Critical
-            critical_nodes.add(current_node)
-            print("  Is critical!")
-
-        next_nodes = graph.adj_list[current_node]
-        #print("   Next nodes: %s" % next_nodes)
-        if len(next_nodes) == 0:
-            break
-
-        edge_counter += len(next_nodes)
-
-
-        next_node = None
-        lowest_id = 10e15
-        for next in next_nodes:
-            if next in linear_ref_nodes:
-                if next < lowest_id:
-                    next_node = next
-                    lowest_id = next
-
-        assert next_node is not None
-        current_node = next_node
 
     return critical_nodes
 

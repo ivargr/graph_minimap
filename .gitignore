@@ -4,3 +4,4 @@ mhc_graph
 *.db
 *.fa
 *.tsv
+*.pyc
