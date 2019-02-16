@@ -59,3 +59,21 @@ Plan nå:
             - Gå til neste veikryss, finn alle mulige stier som er read length lange, align til dem
             - Gjenta ...
 
+time python3 ../graph_minimap/map.py sim.fa minimizers_all.db /data/bioinf/human_1pc/ 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X
+time python3 -m cProfile -s tottime ../graph_minimap/map.py sim.fa minimizers_all.db /data/bioinf/human_1pc/ 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X | head -n 150
+time python3 ../graph_minimap/map.py sim.fa minimizers_chr20.db /data/bioinf/human_1pc/ 20
+
+
+Numpy index for minimizers:
+    - 279 mill minimizers for hele genomet (kanskje dobbelt så mange senere)
+    - En dict fra hash til int64 som gir index posisjon
+    - En dict fra hash til int16 som gir antall minimizers
+    - En int64 array som gir ref pos
+    - int32 som gir node
+    - int8 som gir node offset
+    - int8 som gir kromosom
+    = 112 bits per minimizer = 3.7 GB
+    - Spørsmålet er hvor mye minne 270 mill elementer i dict tar
+
+
+

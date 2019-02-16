@@ -5,3 +5,7 @@ mhc_graph
 *.fa
 *.tsv
 *.pyc
+*.txt
+*.txt
+*.pyc
+graph_minimap/__pycache__/*
