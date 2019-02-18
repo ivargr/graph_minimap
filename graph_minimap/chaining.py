@@ -136,7 +136,7 @@ class Chainer:
                     break
             #print("    scores: %s" % str(scores))
             # Find best predecessor as the one with max score
-            best_predecessor = max(scores, key=scores.get)
+            best_predecessor, best_predecessor_score = max(scores.items(), key=lambda s: s[1] + 0.000001 * s[0])  # Important to prioritize highest key if equal score
             best_predecessor_score = scores[best_predecessor]
             if best_predecessor_score == self.w:
                 best_predecessor = -1
@@ -145,7 +145,6 @@ class Chainer:
             chaining_scores.append(best_predecessor_score)
 
         # Backtracking
-        used_anchors = set()
         chains = []
         #print(" == Backtracking ==")
         used_anchors = set()

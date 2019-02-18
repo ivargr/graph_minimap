@@ -12,7 +12,7 @@ def test_simple():
     ]
 
     chainer = Chainer(anchors)
-    chainer.get_chains()
+    chainer.get_chains(minimium_chaining_score=0)
     chains = chainer.chains
     print(chains)
     assert len(chains) == 2
@@ -20,5 +20,20 @@ def test_simple():
     assert anchors[0] in chains[1] and anchors[1] in chains[0]
 
 
+def test_close_anchors():
+    anchors = [
+        Anchor(10, 1, 10),
+        Anchor(20, 1, 20),
+        Anchor(22, 1, 22),
+        Anchor(32, 1, 32),
+    ]
+
+    chainer = Chainer(anchors)
+    chainer.get_chains(minimium_chaining_score=0)
+    chains = chainer.chains
+    print("\n".join(str(c) for c in chains))
+
+
 if __name__ == "__main__":
-    test_simple()
+    test_close_anchors()
+    #test_simple()
