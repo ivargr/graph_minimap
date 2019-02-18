@@ -55,6 +55,7 @@ class NumpyBasedMinimizerIndex:
         index_pos = self._hash_to_index_pos_dict[hash]
         n_positions = self._hash_to_n_minimizers_dict[hash]
         if n_positions > skip_if_more_than_n_hits:
+            logging.debug("Not returning any hits because too many")
             return []
 
         for i in range(n_positions):

@@ -100,7 +100,7 @@ def get_read_minimizers(read_sequence, k=21, w=10):
 
 def get_index_hits(read_offset, minimizer, index):
     if isinstance(index, NumpyBasedMinimizerIndex):
-        for hit in index.get_index_hits(minimizer, skip_if_more_than_n_hits=100):
+        for hit in index.get_index_hits(minimizer, skip_if_more_than_n_hits=500):
             yield Anchor(read_offset, hit[0], hit[1], hit[2], hit[3])
     else:
         query = "select * FROM minimizers where minimizer_hash=%d and (select count(*) from minimizers where minimizer_hash=%d) < 100 order by chromosome ASC, linear_offset ASC;" % (minimizer, minimizer)
@@ -161,7 +161,7 @@ class Anchor:
             return other_anchor.position - self.position
 
     def __str__(self):
-        return "%s:%d/%d, %d:%d" % (self.chromosome, self.position, self.is_reverse, self.node, self.offset)
+        return "%s:%d/%d, %d:%d (%d)" % (self.chromosome, self.position, self.is_reverse, self.node, self.offset, self.read_offset)
 
     def __repr__(self):
         return self.__str__()
@@ -220,6 +220,8 @@ class Chain:
 
         #aligner = Aligner(graph, sequence_graph, int(first_anchor.node), sequence_after_first_anchor)
         # Align whole sequence at one
+        if print_debug:
+            logging.debug("First anchor read offset: %d" % first_anchor.read_offset)
         aligner = Aligner(graph, sequence_graph, int(first_anchor.node), read_sequence,
                           n_bp_to_traverse_left=first_anchor.read_offset+32, n_bp_to_traverse_right=len(read_sequence)+20)
         alignment_after, score_after = aligner.align()
@@ -229,29 +231,8 @@ class Chain:
         if not alignment_after:
             return Alignment([], [], 0, False, chromosome, first_anchor.position)
 
-        # Align backward
-        n_mismatches = 0 # aligner.n_mismatches_so_far
-        node = -first_anchor.node
-        #offset = graph.blocks[-node].length() - first_anchor.offset
-        #print("ALIGNING BEFORE FIRST ANCHOR from pos %d:%d" % (node, offset))
-        ##logging.debug("Sequence before first anchor: %s" % read_sequence[0:first_anchor.read_offset + k + 1])
-        sequence_before_first_anchor = sequence_graph._reverse_compliment(read_sequence[0:first_anchor.read_offset+k-1])  #  numeric_reverse_compliment(numeric_sequence[0:first_anchor.read_offset+k-1])
-        """
-        aligner = SingleSequenceAligner(graph, sequence_graph, node,
-                                        offset, sequence_before_first_anchor,
-                                        n_mismatches_allowed=n_mismatches_allowed,
-                                        n_mismatches_init=n_mismatches, print_debug=debug_read)
-        """
-        ##logging.debug("Sequence before first anchor: %s" % sequence_before_first_anchor)
-        #aligner = LocalGraphAligner(graph, sequence_graph, sequence_before_first_anchor, linear_ref_nodes_this_chr, node, offset)
-
-        #aligner = Aligner(graph, sequence_graph, node, sequence_before_first_anchor)
-        #alignment_before, score_before = aligner.align()
         alignment_before = []
         score_before = 0
-        if print_debug:
-            logging.debug("Alignment before: %s, score: %d" % (alignment_before, score_before))
-        ##logging.debug("Score before first anchor: %d" % score_before)
         return Alignment(alignment_before, alignment_after, score_before + score_after,
                          True, chromosome, first_anchor.position)
 
@@ -315,6 +296,9 @@ class Chains:
             if len(chain) > minimum_anchors:
                 new_chain.add(chain)
                 #self.chains.remove(chain)
+            else:
+                logging.debug("REmoved chain %s" % chain)
+                continue
         self.chains = new_chain
 
     def __repr__(self):
@@ -392,12 +376,14 @@ def get_chains(sequence, index, print_debug=False):
             raise Exception("Very many minimizers. Something is wrong.")
 
         # Prune away bad chains now and then
-        if (j == 5 or j == 8) and len(chains) > 50:
+        if (j == 5 or j == 8) and len(chains) > 100:
             chains.remove_chains_with_few_anchors(1)
-        elif j >= 10 and len(chains) > 50:
+        elif j >= 10 and len(chains) > 100:
             chains.remove_chains_with_few_anchors(1)
 
-        if j > 10 and len(chains.chains) == 1 and len(chains.chains[0].anchors) >= 5:
+        if j > 12 and len(chains.chains) == 1 and len(chains.chains[0].anchors) >= 6:
+            if print_debug:
+                logging.debug("Not searching more, have a good chain")
             # Only one good chain so far, we don't bother searching more
             break
 
@@ -501,7 +487,7 @@ class ChainResult:
         good_chains = (chain for chain in self.chains if len(chain.anchors) >= 1)
         best_chains = sorted(list(good_chains), reverse=True, key=lambda c: len(c))
         best_chains = best_chains
-        #best_chains = best_chains[0:min(40, max(4, ceil(len(best_chains) / 3)))]
+        best_chains = best_chains[0:min(128, max(4, ceil(len(best_chains) / 1)))]
         alignments = []
         for j, chain in enumerate(best_chains):
             if print_debug:
@@ -543,7 +529,7 @@ def read_graphs(graph_dir, chromosomes):
         logging.info("Reading graphs for chromosome %s" % chromosome)
         graphs[chromosome_name] = Graph.from_file(graph_dir + chromosome + ".nobg")
         sequence_graphs[chromosome_name] = SequenceGraph.from_file(graph_dir + chromosome + ".nobg.sequencesv2")
-        linear_ref_nodes[chromosome_name] = NumpyIndexedInterval.from_file(graph_dir + chromosome + "_linear_pathv2.interval").nodes_in_interval()
+        linear_ref_nodes[chromosome_name] = None  #NumpyIndexedInterval.from_file(graph_dir + chromosome + "_linear_pathv2.interval").nodes_in_interval()
 
     return graphs, sequence_graphs, linear_ref_nodes
 

@@ -2,6 +2,7 @@ import logging
 import sys
 import sqlite3
 
+print_debug=False
 debug_read = False
 if len(sys.argv) > 5:
     debug_read = sys.argv[5]
@@ -9,6 +10,7 @@ if len(sys.argv) > 5:
 if debug_read:
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
     logging.debug("Will debug read %s" % debug_read)
+    print_debug=True
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
@@ -52,20 +54,20 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     i += 1
     correct_chrom, correct_pos = correct_positions[name]
     alignments, chains, n_minimizers = map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
-                                  k=21)
+                                  k=21, print_debug=print_debug)
 
     n_minimizers_tot += n_minimizers
     # print("%d alignments" % len(alignments.alignments))
     if alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
         n_correctly_aligned += 1
     else:
-        if alignments.mapq > 10:
+        if alignments.mapq >= 20:
             print(name)
 
     if alignments.primary_alignment is not False:
         n_aligned += 1
 
-    if alignments.mapq == 60:
+    if alignments.mapq >= 20:
         n_mapq_60 += 1
         if not alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
             n_mapq_60_and_wrong += 1

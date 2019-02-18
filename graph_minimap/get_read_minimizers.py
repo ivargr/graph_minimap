@@ -50,7 +50,7 @@ def get_read_minimizers(read, k, w):
         # Collect the minimizers
         for j in range(pos, min(len(read), pos+w)):
             if hashes[j] == min_hash:
-                m = (hashes[j], j-k+1)
+                m = (hashes[j], j-k+1 + k)  # +k bc we want position to be end of minimizer to be consistent with mapping
                 if m not in minimizers_unique:
                     minimizers.append(m)
                     minimizers_unique.add(m)
