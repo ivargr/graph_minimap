@@ -1,6 +1,7 @@
 from graph_minimap.chaining import Chainer
 from graph_minimap.anchor import Anchor
 
+
 def test_simple():
 
     anchors = [
@@ -17,7 +18,6 @@ def test_simple():
     assert len(chains) == 2
     assert anchors[3] in chains[0] and anchors[2] in chains[0]
     assert anchors[0] in chains[1] and anchors[1] in chains[0]
-
 
 
 if __name__ == "__main__":

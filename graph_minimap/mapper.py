@@ -271,8 +271,10 @@ class Chain:
 
 
 class Chains:
-    def __init__(self):
-        self.chains = SortedList()
+    def __init__(self, chains=None):
+        if chains is None:
+            chains = []
+        self.chains = SortedList(chains)
 
     def __len__(self):
         return len(self.chains)
@@ -306,6 +308,13 @@ class Chains:
 
 
 def get_chains(sequence, index, print_debug=False):
+    from .chaining import Chainer, get_anchors
+    minimizers = get_read_minimizers(sequence)
+    chainer = Chainer(get_anchors(minimizers, index), mean_seed_length=21, w=21, max_anchor_distance=130)
+    chainer.get_chains()
+    return Chains(chainer.chains), 1
+
+
     chains = Chains()
     n_minimizers = 0
     for j, minimizer in enumerate(get_read_minimizers(sequence)):

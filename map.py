@@ -44,7 +44,7 @@ correct_positions = get_correct_positions()
 n_minimizers_tot = 0
 
 for name, sequence in read_fasta(sys.argv[1]).items():
-    logging.debug(" =========== MAPPING %s sequence: %s ==========" % (name, sequence))
+    #logging.info(" =========== MAPPING %s sequence: %s ==========" % (name, ""))
     if debug_read:
         if name != debug_read:
             continue
@@ -99,7 +99,7 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     #if i >= 1000:
     #    break
 
-print("Avg minimizers per read: %d" % (n_minimizers_tot / i))
+#print("Avg minimizers per read: %d" % (n_minimizers_tot / i))
 print("Total reads: %d" % i)
 print("N managed to aligne somewhere: %d" % n_aligned)
 print("N correctly aligned: %d" % n_correctly_aligned)
