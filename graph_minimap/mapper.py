@@ -13,6 +13,7 @@ from .get_read_minimizers import get_read_minimizers as get_read_minimizers2
 from sortedcontainers import SortedList
 from pygssw.align import Aligner
 
+
 def get_correct_positions():
     positions = {}
     with open("sim.gam.truth.tsv") as f:
@@ -24,6 +25,7 @@ def get_correct_positions():
             positions[id] = (chromosome, pos)
 
     return positions
+
 
 def numeric_reverse_compliment(sequence):
     new = np.zeros(len(sequence))
@@ -39,6 +41,7 @@ def numeric_reverse_compliment(sequence):
             new[i] = 2
 
     return new
+
 
 def letter_sequence_to_numeric(sequence):
     sequence = np.array(list(sequence.lower()))
@@ -180,6 +183,9 @@ class Alignment:
     def __str__(self):
         return "Alignment(%d, %d, score: %d)" % (self.chromosome, self.approximate_linear_pos, self.score)
 
+    def __repr__(self):
+        return self.__str__()
+
     def is_correctly_aligned(self, correct_chromosome, correct_position, threshold):
         pos_difference = abs(self.approximate_linear_pos - correct_position)
         if int(self.chromosome) == int(correct_chromosome) and \
@@ -192,7 +198,8 @@ class Chain:
     def __init__(self, anchor):
         self.anchors = SortedList([anchor])
 
-    def align_locally_to_graph(self, graphs, sequence_graphs, linear_ref_nodes, read_sequence, n_mismatches_allowed=7, k=21):
+    def align_locally_to_graph(self, graphs, sequence_graphs, linear_ref_nodes, read_sequence,
+                               n_mismatches_allowed=7, k=21, print_debug=False):
         ##logging.debug("Trying to align chain %s locally" % self)
         # Attempts to align this chain locally to the graph by aligning from first anchor hit in both directions
         numeric_sequence = letter_sequence_to_numeric(read_sequence)
@@ -210,10 +217,15 @@ class Chain:
                                         n_mismatches_allowed=n_mismatches_allowed, print_debug=debug_read)
         """
         #aligner = LocalGraphAligner(graph, sequence_graph, sequence_after_first_anchor, linear_ref_nodes_this_chr, first_anchor.node, first_anchor.offset)
-        aligner = Aligner(graph, sequence_graph, int(first_anchor.node), sequence_after_first_anchor)
-        #aligner.align()
-        #alignment_after = aligner.get_alignment()
+
+        #aligner = Aligner(graph, sequence_graph, int(first_anchor.node), sequence_after_first_anchor)
+        # Align whole sequence at one
+        aligner = Aligner(graph, sequence_graph, int(first_anchor.node), read_sequence,
+                          n_bp_to_traverse_left=first_anchor.read_offset+32, n_bp_to_traverse_right=len(read_sequence)+20)
         alignment_after, score_after = aligner.align()
+        if print_debug:
+            logging.debug("Alignment after: %s, score: %d" % (alignment_after, score_after))
+        #print(alignment_after, score_after)
         if not alignment_after:
             return Alignment([], [], 0, False, chromosome, first_anchor.position)
 
@@ -232,10 +244,13 @@ class Chain:
         """
         ##logging.debug("Sequence before first anchor: %s" % sequence_before_first_anchor)
         #aligner = LocalGraphAligner(graph, sequence_graph, sequence_before_first_anchor, linear_ref_nodes_this_chr, node, offset)
-        aligner = Aligner(graph, sequence_graph, node, sequence_before_first_anchor)
-        #aligner.align()
-        #alignment_before = aligner.get_alignment()
-        alignment_before, score_before = aligner.align()
+
+        #aligner = Aligner(graph, sequence_graph, node, sequence_before_first_anchor)
+        #alignment_before, score_before = aligner.align()
+        alignment_before = []
+        score_before = 0
+        if print_debug:
+            logging.debug("Alignment before: %s, score: %d" % (alignment_before, score_before))
         ##logging.debug("Score before first anchor: %d" % score_before)
         return Alignment(alignment_before, alignment_after, score_before + score_after,
                          True, chromosome, first_anchor.position)
@@ -306,12 +321,13 @@ class Chains:
         return self.__str__()
 
 
-def get_chains(sequence, index):
+def get_chains(sequence, index, print_debug=False):
     chains = Chains()
     n_minimizers = 0
     for j, minimizer in enumerate(get_read_minimizers(sequence)):
         minimizer_hash, read_offset = minimizer
-        ##logging.debug("Processing minimizer %s" % str(minimizer))
+        if print_debug:
+            logging.debug("Processing minimizer %s" % str(minimizer))
         anchors = get_index_hits(read_offset, minimizer_hash, index)
         n_minimizers += 1
         # We want to find out which of the existing chains each new anchor may belong to
@@ -320,7 +336,8 @@ def get_chains(sequence, index):
         try:
             current_anchor = next(anchors)
         except StopIteration:
-            ##logging.debug("   Found no anchors")
+            if print_debug:
+                logging.debug("   Found no anchors")
             continue
 
         while True:
@@ -330,10 +347,12 @@ def get_chains(sequence, index):
 
             current_chain = chains[chain_index]
 
-            #logging.debug("Trying to fit anchor %s to chain %s" % (current_anchor, current_chain))
+            if print_debug:
+                logging.debug("Trying to fit anchor %s to chain %s" % (current_anchor, current_chain))
 
             if current_chain.anchor_fits(current_anchor):
-                #logging.debug("Anchor fits, merging")
+                if print_debug:
+                    logging.debug("Anchor fits, merging")
                 # We got a match, add anchor to chain
                 current_chain.add_anchor(current_anchor)
                 chain_index += 1
@@ -370,7 +389,7 @@ def get_chains(sequence, index):
             chains.add_chain(new_chain)
 
         if j > 3000:
-            break
+            raise Exception("Very many minimizers. Something is wrong.")
 
         # Prune away bad chains now and then
         if (j == 5 or j == 8) and len(chains) > 50:
@@ -381,7 +400,6 @@ def get_chains(sequence, index):
         if j > 10 and len(chains.chains) == 1 and len(chains.chains[0].anchors) >= 5:
             # Only one good chain so far, we don't bother searching more
             break
-
 
     return chains, n_minimizers
 
@@ -437,6 +455,12 @@ class Alignments:
 
         self.primary_alignment = sorted_alignments[0]
 
+    def __str__(self):
+        return "\n".join(str(a) for a in self.alignments)
+
+    def __repr__(self):
+        return self.__str__()
+
 
 class ChainResult:
     def __init__(self, chains):
@@ -473,15 +497,17 @@ class ChainResult:
                 return True
         return False
 
-    def align_best_chains(self, sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=21):
-        good_chains = (chain for chain in self.chains if len(chain.anchors) >= 4)
+    def align_best_chains(self, sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=21, print_debug=False):
+        good_chains = (chain for chain in self.chains if len(chain.anchors) >= 1)
         best_chains = sorted(list(good_chains), reverse=True, key=lambda c: len(c))
-        best_chains = best_chains[0:min(12, max(4, ceil(len(best_chains) / 3)))]
+        best_chains = best_chains
+        #best_chains = best_chains[0:min(40, max(4, ceil(len(best_chains) / 3)))]
         alignments = []
         for j, chain in enumerate(best_chains):
-            #logging.debug("Aligning locally chain %s" % chain)
+            if print_debug:
+                logging.debug("Aligning locally chain %s" % chain)
             alignment = chain.align_locally_to_graph(graphs, sequence_graphs, linear_ref_nodes, sequence,
-                                         n_mismatches_allowed=n_mismatches_allowed, k=k)
+                                         n_mismatches_allowed=n_mismatches_allowed, k=k, print_debug=print_debug)
             assert isinstance(alignment, Alignment)
 
             if alignment.aligned_succesfully:
@@ -490,13 +516,18 @@ class ChainResult:
         return Alignments(alignments)
 
 
-def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mismatches_allowed=7, k=21):
-    chains, n_minimizers = get_chains(sequence, index)
-    #logging.debug("=== CHAINS FOUND ===")
-    #logging.debug(chains)
+def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mismatches_allowed=7, k=21, print_debug=False):
+    chains, n_minimizers = get_chains(sequence, index, print_debug=print_debug)
+    if print_debug:
+        logging.debug("=== CHAINS FOUND ===")
+        logging.debug(chains)
     chains = ChainResult(chains)
     #alignments = Alignments([])
-    alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=k)
+    alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
+                                          k=k, print_debug=print_debug)
+    if print_debug:
+        logging.debug("Alignments: \n%s" % alignments.alignments)
+
     return alignments, chains, n_minimizers
 
 
@@ -511,7 +542,7 @@ def read_graphs(graph_dir, chromosomes):
             chromosome_name = "23"
         logging.info("Reading graphs for chromosome %s" % chromosome)
         graphs[chromosome_name] = Graph.from_file(graph_dir + chromosome + ".nobg")
-        sequence_graphs[chromosome_name] = SequenceGraph.from_file(graph_dir + chromosome + ".nobg.sequences")
+        sequence_graphs[chromosome_name] = SequenceGraph.from_file(graph_dir + chromosome + ".nobg.sequencesv2")
         linear_ref_nodes[chromosome_name] = NumpyIndexedInterval.from_file(graph_dir + chromosome + "_linear_pathv2.interval").nodes_in_interval()
 
     return graphs, sequence_graphs, linear_ref_nodes
