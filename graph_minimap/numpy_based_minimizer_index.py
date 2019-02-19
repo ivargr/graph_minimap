@@ -85,7 +85,13 @@ def get_hits_for_multiple_minimizers(minimizers, hasher_array, hash_to_index_pos
     chain_nodes = chain_nodes[accepted_chain_indexes]
     chain_positions = chain_positions[accepted_chain_indexes]
 
-    return chain_chromosomes, chain_positions, chain_scores, chain_nodes
+    # Sort by score desc
+    sorted_indexes = np.argsort(chain_scores)[::-1]
+
+    return chain_chromosomes[sorted_indexes], \
+           chain_positions[sorted_indexes], \
+           chain_scores[sorted_indexes], \
+           chain_nodes[sorted_indexes]
 
 
 

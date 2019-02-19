@@ -70,44 +70,6 @@ def letter_sequence_to_numeric(sequence):
 
 def get_read_minimizers(read_sequence, k=21, w=10):
     return get_read_minimizers2(letter_sequence_to_numeric(read_sequence), k=21, w=w)
-    # Non-dynamic slow and simple approach
-
-    all_hashes = np.zeros(len(read_sequence), dtype=np.int)
-    numeric_sequence = letter_sequence_to_numeric(read_sequence)
-    positions_selected = set()
-    minimizers = []
-    current_hash = kmer_to_hash_fast(numeric_sequence[0:k], k=k)
-    #logging.debug("First hash: %d" % current_hash)
-    all_hashes[0] = current_hash
-
-    for pos in range(1, len(read_sequence) - k+1):
-        prev_base_value = numeric_sequence[pos-1]
-        next_base_value = numeric_sequence[pos + k-1]
-        #print("Pos %d, prev %d, next %d" % (pos, prev_base_value, next_base_value))
-        new_hash = current_hash - pow(5, k - 1) * prev_base_value
-        new_hash *= 5
-        new_hash = new_hash + next_base_value
-        current_hash = new_hash
-        ##logging.debug("Hash: %d" % current_hash)
-        #print("Computing hash for sequence %s: %d" % (", ".join(str(n) for n in numeric_sequence[pos:pos+k]), current_hash))
-        #print("Computing hash for sequence %s: %d" % (read_sequence[pos:pos+k], current_hash))
-        all_hashes[pos] = current_hash
-
-        # Find lowest hash among previous w hashes
-        start_window = max(0, pos - w + 1)
-        end_window = pos + 1
-        #print("Hashes in window: %s" % str(all_hashes[start_window:end_window]))
-
-        if pos >= w -1 :
-            smallest_hash_position = np.argmin(all_hashes[start_window:end_window]) + start_window
-
-            if smallest_hash_position not in positions_selected:
-                #print("   Found smallest on pos %d" % smallest_hash_position)
-                #minimizers.append((smallest_hash_position, all_hashes[smallest_hash_position]))
-                minimizers.append((all_hashes[smallest_hash_position], smallest_hash_position))
-                positions_selected.add(smallest_hash_position)
-
-    return minimizers
 
 
 def get_index_hits(read_offset, minimizer, index, skip_if_more_than_n_hits=500):
@@ -261,46 +223,25 @@ class Chain:
         #return self.anchors[0] == other.anchors[0]
 
 
-class Chains:
-    def __init__(self, chains=None):
-        if chains is None:
-            chains = []
-        self.chains = SortedList(chains)
-
-    def __len__(self):
-        return len(self.chains)
-
-    def add_chain(self, chain):
-        self.chains.add(chain)
-
-    def __getitem__(self, index):
-        return self.chains[index]
-
-    def __str__(self):
-        out = ""
-        for chain in self.chains:
-            out += str(chain) + "\n"
-
-        return out
-
-    def remove_chains_with_few_anchors(self, minimum_anchors):
-        new_chain = SortedList()
-        for chain in list(self.chains):
-            if len(chain) > minimum_anchors:
-                new_chain.add(chain)
-                #self.chains.remove(chain)
-            else:
-                logging.debug("REmoved chain %s" % chain)
-                continue
-        self.chains = new_chain
-
-    def __repr__(self):
-        return self.__str__()
 
 
-def get_chains_fast(sequence, index):
-    minimizers = get_read_minimizers(sequence)
-    minimizer_hashes = np.array([m[0] for m in minimizers])
+
+def _translate_numba_chaining_results(chains_chromosomes, chains_positions, chains_scores, chains_nodes):
+   # tmp thing, can be speed up
+    chains = []
+    for i in range(0, len(chains_chromosomes)):
+        chain = Chain(Anchor(20, int(chains_chromosomes[i]), chains_positions[i], chains_nodes[i], 0))
+        chain.chaining_score = chains_scores[i]
+        chains.append(chain)
+    return chains
+
+
+def minimizers_to_numpy(minimizers):
+    return np.array([m[0] for m in minimizers])
+
+
+def get_chains(sequence, index, print_debug=False):
+    minimizer_hashes, minimizer_offsets = get_read_minimizers(sequence)
 
     chains_chromosomes, chains_positions, chains_scores, chains_nodes = get_hits_for_multiple_minimizers(
         minimizer_hashes, index.hasher._hashes,
@@ -312,111 +253,7 @@ def get_chains_fast(sequence, index):
         index._offsets
     )
 
-    # tmp thing, can be speed up
-    chains = []
-    for i in range(0, len(chains_chromosomes)):
-        chain = Chain(Anchor(20, int(chains_chromosomes[i]), chains_positions[i], chains_nodes[i], 0))
-        chain.chaining_score = chains_scores[i]
-        chains.append(chain)
-    return chains
-
-
-
-def get_chains(sequence, index, print_debug=False):
-    # Hacky fast way
-    chains = get_chains_fast(sequence, index)
-    return Chains(chains), 1
-
-
-    minimizers = get_read_minimizers(sequence)
-    #chainer = Chainer(get_anchors(minimizers, index), mean_seed_length=21, w=21, max_anchor_distance=130)
-    chainer = LinearTimeChainer(get_anchors(minimizers, index), max_anchor_distance=130)
-    chainer.get_chains()
-    return Chains(chainer.chains), 1
-
-
-    chains = Chains()
-    n_minimizers = 0
-    for j, minimizer in enumerate(get_read_minimizers(sequence)):
-        minimizer_hash, read_offset = minimizer
-        if print_debug:
-            logging.debug("Processing minimizer %s" % str(minimizer))
-        anchors = get_index_hits(read_offset, minimizer_hash, index)
-        n_minimizers += 1
-        # We want to find out which of the existing chains each new anchor may belong to
-        new_chains_to_add = []  # We store new anchors not matching here, add in the end
-        chain_index = 0
-        try:
-            current_anchor = next(anchors)
-        except StopIteration:
-            if print_debug:
-                logging.debug("   Found no anchors")
-            continue
-
-        while True:
-            if chain_index >= len(chains):
-                # No more chains
-                break
-
-            current_chain = chains[chain_index]
-
-            if print_debug:
-                logging.debug("Trying to fit anchor %s to chain %s" % (current_anchor, current_chain))
-
-            if current_chain.anchor_fits(current_anchor):
-                if print_debug:
-                    logging.debug("Anchor fits, merging")
-                # We got a match, add anchor to chain
-                current_chain.add_anchor(current_anchor)
-                chain_index += 1
-                try:
-                    current_anchor = next(anchors)
-                except StopIteration:
-                    current_anchor = None
-                    break
-            else:
-
-                if current_chain.anchor_is_smaller(current_anchor):
-                    #logging.debug("Anchor is smaller")
-                    # Anchor is not matching chain, we make a new chain if we have not processed too many minimizers
-                    if True or (j < 10 and len(chains) <= 2 or j < 4):
-                        new_chains_to_add.append(Chain(current_anchor))
-                    try:
-                        current_anchor = next(anchors)
-                    except StopIteration:
-                        current_anchor = None
-                        break
-                else:
-                    #logging.debug("Anchor is larger")
-                    # Anchor is larger, try fitting it to the next chain
-                    chain_index += 1
-
-        # Add all remaining anchors that did not get added when we iterated chains
-        for anchor in itertools.chain([current_anchor], anchors):
-            if True or (j < 18 and len(chains) <= 2 or j < 5):
-                #logging.debug("Adding new chain with anchor %s" % anchor)
-                if anchor is not None:
-                    chains.add_chain(Chain(anchor))
-
-        for new_chain in new_chains_to_add:
-            chains.add_chain(new_chain)
-
-        if j > 3000:
-            raise Exception("Very many minimizers. Something is wrong.")
-
-        # Prune away bad chains now and then
-        if (j == 5 or j == 8) and len(chains) > 100:
-            chains.remove_chains_with_few_anchors(1)
-        elif j >= 10 and len(chains) > 100:
-            chains.remove_chains_with_few_anchors(1)
-
-        if j > 12 and len(chains.chains) == 1 and len(chains.chains[0].anchors) >= 6:
-            if print_debug:
-                logging.debug("Not searching more, have a good chain")
-            # Only one good chain so far, we don't bother searching more
-            break
-
-    return chains, n_minimizers
+    return ChainResult(chains_chromosomes, chains_positions, chains_scores, chains_nodes), len(minimizer_hashes)
 
 
 class Alignments:
@@ -484,52 +321,65 @@ class Alignments:
 
 
 class ChainResult:
-    def __init__(self, chains):
-        self.chains = chains
+    def __init__(self, chromosomes, positions, scores, nodes):
+        self.chromosomes = chromosomes
+        self.positions = positions
+        self.scores = scores
+        self.nodes = nodes
+        self.n_chains = len(self.chromosomes)
 
     def get_linear_ref_position(self):
-        if len(self.chains) > 0:
-            return self.chains.chains[-1].anchors[0].position
+        if self.n_chains > 0:
+            return self.positions[0]
         else:
             return 0
 
     def best_chain_is_correct(self, correct_position):
-        if len(self.chains) == 0:
+        if self.n_chains == 0:
             return False
-        if abs(sorted(self.chains, reverse=True, key=lambda c: len(c))[0].anchors[0].position - correct_position) < 150:
+        if abs(self.positions[0] - correct_position) < 150:
             return True
 
     def hash_chain_among_best_50_percent_chains(self, correct_position):
-        if len(self.chains) == 0:
+        if self.n_chains == 0:
             return False
 
-        sorted_chains = sorted(self.chains, reverse=True, key=lambda c: len(c))
-        n_top = max(5, ceil(len(sorted_chains)/3))
-        top_half = sorted_chains[0:n_top]
+        n_top = min(self.n_chains, max(5, ceil(self.n_chains/3)))
         #top_half = sorted_chains[0:3] #ceil(len(sorted_chains)/2)]
-        for chain in top_half:
-            if abs(chain.anchors[0].position - correct_position) < 150:
+        for i in range(0, n_top):
+            if abs(self.positions[i] - correct_position) < 150:
                 return True
         return False
 
     def has_chain_close_to_position(self, position):
-        for chain in self.chains:
-            if abs(chain.anchors[0].position - position) < 150:
+        for chain in range(0, self.n_chains):
+            if abs(self.positions[chain] - position) < 150:
                 return True
         return False
 
     def align_best_chains(self, sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=21, print_debug=False):
-        good_chains = (chain for chain in self.chains if len(chain.anchors) >= 1)
-        best_chains = sorted(list(good_chains), reverse=True, key=lambda c: c.chaining_score)
-        best_chains = best_chains
-        best_chains = best_chains[0:min(75, max(5, ceil(len(best_chains) / 2)))]
+        n_chains_to_align = min(self.n_chains, min(75, max(5, self.n_chains // 2)))
+
         alignments = []
-        for j, chain in enumerate(best_chains):
-            if print_debug:
-                logging.debug("Aligning locally chain %s" % chain)
-            alignment = chain.align_locally_to_graph(graphs, sequence_graphs, linear_ref_nodes, sequence,
-                                         n_mismatches_allowed=n_mismatches_allowed, k=k, print_debug=print_debug)
-            assert isinstance(alignment, Alignment)
+        for j in range(n_chains_to_align):
+
+            chromosome = int(self.chromosomes[j])
+            position = self.positions[j]
+            node = int(self.nodes[j])
+            graph = graphs[str(chromosome)]
+            read_offset = 30
+            sequence_graph = sequence_graphs[str(chromosome)]
+
+            aligner = Aligner(graph, sequence_graph, node, sequence,
+                              n_bp_to_traverse_left=read_offset + 32,
+                              n_bp_to_traverse_right=len(sequence)-read_offset + 40)
+
+            #print("Aligning node %d" % node)
+            alignment, score = aligner.align()
+            if not alignment:
+                alignment = Alignment([], [], 0, False, chromosome, position)
+            else:
+                alignment = Alignment(alignment, [], score, True, chromosome, position)
 
             if alignment.aligned_succesfully:
                 alignments.append(alignment)
@@ -542,7 +392,6 @@ def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mism
     if print_debug:
         logging.debug("=== CHAINS FOUND ===")
         logging.debug("\n ---- ".join(str(c) for c in chains))
-    chains = ChainResult(chains)
     #alignments = Alignments([])
     alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
                                           k=k, print_debug=print_debug)

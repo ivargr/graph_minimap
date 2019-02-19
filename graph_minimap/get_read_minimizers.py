@@ -31,6 +31,8 @@ def get_read_minimizers(read, k, w):
     hashes = np.zeros(len(read))
     hashes[k-1] = current_hash
     minimizers = []
+    minimizer_hashes = []
+    minimizer_offsets = []
     minimizers_unique = set()
 
     # Get hashes for each pos first
@@ -53,8 +55,11 @@ def get_read_minimizers(read, k, w):
                 m = (hashes[j], j-k+1 + k)  # +k bc we want position to be end of minimizer to be consistent with mapping
                 if m not in minimizers_unique:
                     minimizers.append(m)
+                    minimizer_hashes.append(m[0])
+                    minimizer_offsets.append(m[1])
                     minimizers_unique.add(m)
-    return minimizers
+
+    return np.array(minimizer_hashes), minimizer_offsets
 
 
 if __name__ == "__main__":

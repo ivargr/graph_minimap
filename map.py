@@ -75,7 +75,7 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     if alignments.any_alignment_is_correct(correct_chrom, correct_pos, threshold=150):
         n_secondary_correct += 1
 
-    if len(chains.chains) > 500:
+    if chains.n_chains > 500:
         logging.warning("%s has many chains" % name)
 
     # print(name, len(mapping.chains))
