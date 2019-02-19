@@ -67,7 +67,7 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     if alignments.primary_alignment is not False:
         n_aligned += 1
 
-    if alignments.mapq >= 20:
+    if alignments.mapq >= 60:
         n_mapq_60 += 1
         if not alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
             n_mapq_60_and_wrong += 1

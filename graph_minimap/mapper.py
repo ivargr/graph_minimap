@@ -1,4 +1,5 @@
 import sys
+from .numpy_based_minimizer_index import get_hits_for_multiple_minimizers
 from offsetbasedgraph import Graph, SequenceGraphv2 as SequenceGraph, NumpyIndexedInterval
 from .numpy_based_minimizer_index import NumpyBasedMinimizerIndex
 from .local_graph_aligner import LocalGraphAligner
@@ -8,11 +9,22 @@ import itertools
 import sqlite3
 import numpy as np
 from rough_graph_mapper.util import read_fasta
+from .alignment import Alignment
 from graph_minimap.find_minimizers_in_kmers import kmer_to_hash_fast
 from .get_read_minimizers import get_read_minimizers as get_read_minimizers2
 from sortedcontainers import SortedList
 from pygssw.align import Aligner
+from .linear_time_chaining import LinearTimeChainer
 
+
+def get_anchors(read_minimizers, index):
+    anchors = []
+    for minimizer, read_offset in read_minimizers:
+        for anchor in get_index_hits(read_offset, minimizer, index, ):
+            anchors.append(anchor)
+
+    anchors = sorted(anchors)
+    return anchors
 
 def get_correct_positions():
     positions = {}
@@ -98,9 +110,9 @@ def get_read_minimizers(read_sequence, k=21, w=10):
     return minimizers
 
 
-def get_index_hits(read_offset, minimizer, index):
+def get_index_hits(read_offset, minimizer, index, skip_if_more_than_n_hits=500):
     if isinstance(index, NumpyBasedMinimizerIndex):
-        for hit in index.get_index_hits(minimizer, skip_if_more_than_n_hits=500):
+        for hit in index.get_index_hits(minimizer, skip_if_more_than_n_hits=skip_if_more_than_n_hits):
             yield Anchor(read_offset, hit[0], hit[1], hit[2], hit[3])
     else:
         query = "select * FROM minimizers where minimizer_hash=%d and (select count(*) from minimizers where minimizer_hash=%d) < 100 order by chromosome ASC, linear_offset ASC;" % (minimizer, minimizer)
@@ -171,27 +183,6 @@ class Anchor:
             self.is_reverse == other.is_reverse
 
 
-class Alignment:
-    def __init__(self, interval1, interval2, score, aligned_successfully, chromosome, approximate_linear_pos):
-        self.interval1 = interval1
-        self.interval2 = interval2
-        self.score = score
-        self.aligned_succesfully = aligned_successfully
-        self.chromosome = chromosome
-        self.approximate_linear_pos = approximate_linear_pos
-
-    def __str__(self):
-        return "Alignment(%d, %d, score: %d)" % (self.chromosome, self.approximate_linear_pos, self.score)
-
-    def __repr__(self):
-        return self.__str__()
-
-    def is_correctly_aligned(self, correct_chromosome, correct_position, threshold):
-        pos_difference = abs(self.approximate_linear_pos - correct_position)
-        if int(self.chromosome) == int(correct_chromosome) and \
-                pos_difference <= threshold:
-            return True
-        return False
 
 
 class Chain:
@@ -307,10 +298,39 @@ class Chains:
         return self.__str__()
 
 
-def get_chains(sequence, index, print_debug=False):
-    from .chaining import Chainer, get_anchors
+def get_chains_fast(sequence, index):
     minimizers = get_read_minimizers(sequence)
-    chainer = Chainer(get_anchors(minimizers, index), mean_seed_length=21, w=21, max_anchor_distance=130)
+    minimizer_hashes = np.array([m[0] for m in minimizers])
+
+    chains_chromosomes, chains_positions, chains_scores, chains_nodes = get_hits_for_multiple_minimizers(
+        minimizer_hashes, index.hasher._hashes,
+        index._hash_to_index_pos_dict,
+        index._hash_to_n_minimizers_dict,
+        index._chromosomes,
+        index._linear_ref_pos,
+        index._nodes,
+        index._offsets
+    )
+
+    # tmp thing, can be speed up
+    chains = []
+    for i in range(0, len(chains_chromosomes)):
+        chain = Chain(Anchor(20, int(chains_chromosomes[i]), chains_positions[i], chains_nodes[i], 0))
+        chain.chaining_score = chains_scores[i]
+        chains.append(chain)
+    return chains
+
+
+
+def get_chains(sequence, index, print_debug=False):
+    # Hacky fast way
+    chains = get_chains_fast(sequence, index)
+    return Chains(chains), 1
+
+
+    minimizers = get_read_minimizers(sequence)
+    #chainer = Chainer(get_anchors(minimizers, index), mean_seed_length=21, w=21, max_anchor_distance=130)
+    chainer = LinearTimeChainer(get_anchors(minimizers, index), max_anchor_distance=130)
     chainer.get_chains()
     return Chains(chainer.chains), 1
 
@@ -406,7 +426,7 @@ class Alignments:
         self._set_primary_alignment()
         self._set_mapq()
 
-    def _set_mapq(self):
+    def _set_mapq(self, max_score=300):
         if not self.primary_alignment:
             self.mapq = 0
             return
@@ -422,6 +442,12 @@ class Alignments:
         #logging.debug("Primary - secondary: %d" % primary_to_secondary_diff)
         mapq = 10 / log(10) * (log(2) * (primary_score - secondary_score) - log(n_alignments))
         mapq = int(max(0, min(60, mapq)))
+
+        # Lower mapq if highest score is low, means we probably have not found correct one
+        if primary_score < max_score * 0.8:
+            mapq = int(mapq * (primary_score / max_score))
+
+
         #logging.debug("Computed mapq=%d. Primary score: %d. Secondary score: %d. N alignments: %d" % (mapq, primary_score, secondary_score, n_alignments))
         self.mapq = mapq
 
@@ -494,9 +520,9 @@ class ChainResult:
 
     def align_best_chains(self, sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=21, print_debug=False):
         good_chains = (chain for chain in self.chains if len(chain.anchors) >= 1)
-        best_chains = sorted(list(good_chains), reverse=True, key=lambda c: len(c))
+        best_chains = sorted(list(good_chains), reverse=True, key=lambda c: c.chaining_score)
         best_chains = best_chains
-        best_chains = best_chains[0:min(128, max(4, ceil(len(best_chains) / 1)))]
+        best_chains = best_chains[0:min(75, max(5, ceil(len(best_chains) / 2)))]
         alignments = []
         for j, chain in enumerate(best_chains):
             if print_debug:
@@ -515,13 +541,13 @@ def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mism
     chains, n_minimizers = get_chains(sequence, index, print_debug=print_debug)
     if print_debug:
         logging.debug("=== CHAINS FOUND ===")
-        logging.debug(chains)
+        logging.debug("\n ---- ".join(str(c) for c in chains))
     chains = ChainResult(chains)
     #alignments = Alignments([])
     alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
                                           k=k, print_debug=print_debug)
     if print_debug:
-        logging.debug("Alignments: \n%s" % alignments.alignments)
+        logging.debug("Alignments: \n%s" % "\n".join(str(a) for a in alignments.alignments))
 
     return alignments, chains, n_minimizers
 

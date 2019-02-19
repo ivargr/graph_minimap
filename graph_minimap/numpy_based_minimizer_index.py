@@ -7,6 +7,86 @@ import numpy as np
 import pickle
 import shelve
 from graph_minimap.logn_hash_map import LogNHashMap
+from numba import jit
+
+
+@jit(nopython=True)
+def get_hits_for_multiple_minimizers(minimizers, hasher_array, hash_to_index_pos, hash_to_n_minimizers, chromosomes,
+                                     linear_ref_pos, nodes, offsets):
+    """
+    Ugly function that performs fast numpy chaining.
+    """
+    minimum_anchors_in_chain = 3
+    max_distance_between_anchors_within_same_chain = 160
+
+    # Get all anchors
+    hashes = np.searchsorted(hasher_array, minimizers)
+    hashes = hashes[hasher_array[hashes] == minimizers]
+
+    index_positions = hash_to_index_pos[hashes]
+    lengths = hash_to_n_minimizers[hashes]
+
+    anchors_positions = np.zeros(np.sum(lengths))
+    anchors_chromosomes = np.zeros(np.sum(lengths))
+    anchors_nodes = np.zeros(np.sum(lengths))
+    anchors_offsets = np.zeros(np.sum(lengths))
+    offset = 0
+    for i in range(0, len(index_positions)):
+        n_anchors = lengths[i]
+        index_pos = index_positions[i]
+        anchors_positions[offset:offset+n_anchors] = linear_ref_pos[index_pos:index_pos+n_anchors]
+        anchors_chromosomes[offset:offset+n_anchors] = chromosomes[index_pos:index_pos+n_anchors]
+        anchors_nodes[offset:offset+n_anchors] = nodes[index_pos:index_pos+n_anchors]
+        anchors_offsets[offset:offset+n_anchors] = offsets[index_pos:index_pos+n_anchors]
+        offset += n_anchors
+
+    # Do chaining
+    # Sort by chromosome first
+    sorting_indexes = np.argsort(anchors_chromosomes*10e10 + anchors_positions)
+    #sorting_indexes = np.argsort(np.left_shift(anchors_chromosomes, 32) + anchors_positions)
+    anchors_positions = anchors_positions[sorting_indexes]
+    anchors_chromosomes = anchors_chromosomes[sorting_indexes]
+    anchors_nodes = anchors_nodes[sorting_indexes]
+
+    # We can now do the chaining. We want to know start position, node and number of anchors in each chain
+    current_chromosome = -1
+    current_position = 0
+    max_chains = len(anchors_positions)
+    chain_chromosomes = np.zeros(max_chains)
+    chain_scores = np.zeros(max_chains)
+    chain_nodes = np.zeros(max_chains)
+    chain_positions = np.zeros(max_chains)
+
+    chain_counter = -1
+    for i in range(0, len(anchors_positions)):
+        pos = anchors_positions[i]
+        chromosome = anchors_chromosomes[i]
+
+        if chromosome != current_chromosome or pos > current_position + max_distance_between_anchors_within_same_chain:
+            chain_counter += 1
+            # This is a new chain
+            chain_chromosomes[chain_counter] = chromosome
+            chain_positions[chain_counter] = pos
+            chain_scores[chain_counter] = 1
+            chain_nodes[chain_counter] = anchors_nodes[i]
+            current_chromosome = chromosome
+            current_position = pos
+        else:
+            # Add anchor to existing chain
+            chain_scores[chain_counter] += 1
+
+
+
+    # Get the chains that we found, keep only those with high enough score
+    accepted_chain_indexes = (chain_chromosomes != 0) & (chain_scores >= minimum_anchors_in_chain)
+
+    chain_chromosomes = chain_chromosomes[accepted_chain_indexes]
+    chain_scores = chain_scores[accepted_chain_indexes]
+    chain_nodes = chain_nodes[accepted_chain_indexes]
+    chain_positions = chain_positions[accepted_chain_indexes]
+
+    return chain_chromosomes, chain_positions, chain_scores, chain_nodes
+
 
 
 class NumpyBasedMinimizerIndex:

@@ -1,15 +1,30 @@
 import math
 import logging
-from .mapper import get_read_minimizers2, get_index_hits
-from .mapper import Alignment
+from .alignment import Alignment
 from pygssw.align import Aligner
 
 
 class Chain:
     def __init__(self):
         self.anchors = []
-        self.chaining_score = None
+        self.chaining_score = -1
         self.mapq = None
+
+    def is_empty(self):
+        return len(self.anchors) == 0
+
+    def add_anchor(self, anchor):
+        self.anchors.append(anchor)
+
+    def anchor_fits_with_chain(self, anchor, max_distance_allowed=100):
+        first_anchor = self.anchors[0]
+        if anchor.chromosome != first_anchor.chromosome:
+            return False
+        elif anchor.position > first_anchor.position + max_distance_allowed:
+            return False
+        else:
+            return True
+
 
     def align_locally_to_graph(self, graphs, sequence_graphs, linear_ref_nodes, read_sequence,
                                n_mismatches_allowed=7, k=21, print_debug=False):
@@ -66,14 +81,6 @@ class Chain:
         return len(self.anchors)
 
 
-def get_anchors(read_minimizers, index):
-    anchors = []
-    for minimizer, read_offset in read_minimizers:
-        for anchor in get_index_hits(read_offset, minimizer, index):
-            anchors.append(anchor)
-
-    anchors = sorted(anchors)
-    return anchors
 
 
 class Chainer:
@@ -84,17 +91,18 @@ class Chainer:
         self.anchors = anchors
         self.chains = []
 
-    def distance_between_anchors(self, i, j):
-        distance = min(min((self.anchors[i].position-self.anchors[j].position),
-                           (self.anchors[i].read_offset-self.anchors[j].read_offset)),
-                       self.w)
+    def distance_between_anchors(self, i, j, fast_mode=True):
+        #distance = min(min((self.anchors[i].position-self.anchors[j].position),
+        #                   (self.anchors[i].read_offset-self.anchors[j].read_offset)),
+        #               self.w)
+        distance = min(self.anchors[i].read_offset - self.anchors[j].read_offset, self.w)
         return distance
 
     def lfunc(self, i, j):
         return ((self.anchors[i].position - self.anchors[j].position) -
                 (self.anchors[i].read_offset - self.anchors[j].read_offset))
 
-    def anchor_gap_cost(self, i, j):
+    def anchor_gap_cost(self, i, j, fast_mode=False):
         anchor1 = self.anchors[j]
         anchor2 = self.anchors[i]
         #print(anchor1.position, anchor2.position)
@@ -109,15 +117,42 @@ class Chainer:
                 anchor2.read_offset - anchor1.read_offset > self._max_anchor_distance:
             return 10000
 
+        distance = abs(self.lfunc(i, j))
+        if distance == 0:
+            return 0
+        elif distance > 150:
+            return 1000000
+        else:
+            if fast_mode:
+                if distance > self._mean_seed_length:
+                    return -(self._mean_seed_length - 0.01 * distance*self._mean_seed_length)
+                else:
+                    return -distance
+
+            else:
+                return 0.01 * self._mean_seed_length * abs(distance) + 0.5 * math.log2(abs(distance))
+
+    def anchors_score(self, i, j):
+        anchor1 = self.anchors[j]
+        anchor2 = self.anchors[i]
+        #print(anchor1.position, anchor2.position)
+        if anchor1.chromosome != anchor2.chromosome:
+            return -10e15
+
+        if anchor1.position >= anchor2.position:
+            #print("Anchor1 pos > anchor2 pos")
+            return -10000000
+
+        if anchor2.position - anchor1.position > self._max_anchor_distance or \
+                anchor2.read_offset - anchor1.read_offset > self._max_anchor_distance:
+            return -10000
+
         distance = self.lfunc(i, j)
         if distance == 0:
             return 0
-        else:
-            return 0.01 * self._mean_seed_length * abs(distance) + 0.5 * math.log2(abs(distance))
+        return min(distance, 21) - (0.01*21*abs(distance) + 0.5 * math.log2(abs(distance)))
 
-
-
-    def get_chains(self, minimium_chaining_score=40):
+    def get_chains(self, minimium_chaining_score=20, minimum_minimizers_on_chain=2):
         chaining_scores = [self.w]  # Maximal score up to the ith anchor at ith position
         best_predecessors = {0: -1}  # Best predecessor anchors of anchor at key
 
@@ -129,9 +164,10 @@ class Chainer:
             for j in range(i-1, -1, -1):  # All j's lower than i
 
                 score = max(chaining_scores[j] + self.distance_between_anchors(i, j) - self.anchor_gap_cost(i, j), self.w)
+                #score = max(chaining_scores[j] + self.anchors_score(i, j), self.w)
                 #print("   j=%d. Dist: %.3f. Score: %.2f. Gap cost: %d" % (j, self.distance_between_anchors(i, j), score, self.anchor_gap_cost(i, j)))
                 scores[j] = score
-                if j < i - 20:
+                if j < i - 1:
                     # Using heuristic that chaining this far down probably gives a lower score
                     break
             #print("    scores: %s" % str(scores))
@@ -164,14 +200,15 @@ class Chainer:
                     break
                 current_anchor = best
             current_chain.chaining_score = chaining_scores[i]
-            if current_chain.chaining_score >= minimium_chaining_score:
+            if current_chain.chaining_score >= minimium_chaining_score and \
+                    len(current_chain.anchors) >= minimum_minimizers_on_chain:
                 # Hack for now, we need to reverse order to be compatible with old setup
                 current_chain.anchors = current_chain.anchors[::-1]
                 chains.append(current_chain)
 
 
-        if len(chains) > 100:
-            print("\n".join([str(c) for c in chains]))
+        #if len(chains) > 100:
+        #    print("\n".join([str(c) for c in chains]))
 
         #print("=========")
         #print("\n".join([str(c) for c in chains]))
