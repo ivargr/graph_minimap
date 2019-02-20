@@ -161,8 +161,9 @@ def align_chain(node, chromosome, linear_pos, sequence, graph_nodes, graph_seque
     return Alignment(alignment, [], score, True, chromosome, linear_pos)
 
 class Alignments:
-    def __init__(self, alignments):
+    def __init__(self, alignments, chains):
         self.alignments = alignments
+        self.chains = chains
         self.primary_alignment = None
         self._set_primary_alignment()
         self._set_mapq()
@@ -289,7 +290,7 @@ def map_read(sequence,
     if print_debug:
         logging.debug("Alignments: \n%s" % "\n".join(str(a) for a in alignments))
 
-    return Alignments(alignments), chains, n_minimizers
+    return Alignments(alignments, chains)
 
 
 def read_graphs(graph_dir, chromosomes):

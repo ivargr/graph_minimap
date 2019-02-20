@@ -22,7 +22,6 @@ from graph_minimap.numpy_based_minimizer_index import NumpyBasedMinimizerIndex
 index_file = sys.argv[2]
 index = NumpyBasedMinimizerIndex.from_file(index_file)
 
-i = 0
 n_correct_chain_found = 0
 n_best_chain_is_correct = 0
 n_best_chain_among_top_half = 0
@@ -54,34 +53,60 @@ index_offsets = index._offsets
 correct_positions = get_correct_positions()
 n_minimizers_tot = 0
 
+all_alignments = []
+
+
+def map_read_wrapper(fasta_entry):
+    name, sequence = fasta_entry
+    alignment = map_read(sequence,
+                        index_hasher_array,
+                        index_hash_to_index_pos,
+                        index_hash_to_n_minimizers,
+                        index_chromosomes,
+                        index_positions,
+                        index_nodes,
+                        index_offsets,
+                        nodes,
+                        sequences,
+                        edges_indexes,
+                        edges_edges,
+                        edges_n_edges,
+                        print_debug=print_debug
+                        )
+    return name, alignment
+
+from multiprocessing import Pool
+
+pool = Pool(10)
+
+fasta_entries = read_fasta(sys.argv[1]).items()
+
+i = 0
+for alignment in pool.imap_unordered(map_read_wrapper, fasta_entries):
+    if i % 50 == 0:
+        logging.info("%d processed" % i)
+    all_alignments.append(alignment)
+    i += 1
+
+"""
 for name, sequence in read_fasta(sys.argv[1]).items():
     #logging.info(" =========== MAPPING %s sequence: %s ==========" % (name, ""))
     if debug_read:
         if name != debug_read:
             continue
 
+    alignment = map_read_wrapper(sequence)
     if i % 50 == 0:
         logging.info("%d processed" % i)
     i += 1
+    all_alignments.append((name, alignment))
+
+"""
+
+for name, alignments in all_alignments:
+    chains = alignments.chains
+
     correct_chrom, correct_pos = correct_positions[name]
-    alignments, chains, n_minimizers = map_read(sequence,
-                                                index_hasher_array,
-                                                index_hash_to_index_pos,
-                                                index_hash_to_n_minimizers,
-                                                index_chromosomes,
-                                                index_positions,
-                                                index_nodes,
-                                                index_offsets,
-                                                nodes,
-                                                sequences,
-                                                edges_indexes,
-                                                edges_edges,
-                                                edges_n_edges,
-                                                print_debug=print_debug
-                                                )
-
-
-    n_minimizers_tot += n_minimizers
     # print("%d alignments" % len(alignments.alignments))
     if alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
         n_correctly_aligned += 1
@@ -125,7 +150,6 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     #if i >= 1000:
     #    break
 
-#print("Avg minimizers per read: %d" % (n_minimizers_tot / i))
 print("Total reads: %d" % i)
 print("N managed to aligne somewhere: %d" % n_aligned)
 print("N correctly aligned: %d" % n_correctly_aligned)
