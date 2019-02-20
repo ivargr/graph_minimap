@@ -61,8 +61,8 @@ for name, sequence in read_fasta(sys.argv[1]).items():
     if alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
         n_correctly_aligned += 1
     else:
-        if alignments.mapq >= 20:
-            print(name)
+        if alignments.mapq >= 60:
+            logging.warning("%s mismapped" % name)
 
     if alignments.primary_alignment is not False:
         n_aligned += 1
@@ -72,10 +72,11 @@ for name, sequence in read_fasta(sys.argv[1]).items():
         if not alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
             n_mapq_60_and_wrong += 1
 
+
     if alignments.any_alignment_is_correct(correct_chrom, correct_pos, threshold=150):
         n_secondary_correct += 1
 
-    if chains.n_chains > 500:
+    if chains.n_chains > 5000:
         logging.warning("%s has many chains" % name)
 
     # print(name, len(mapping.chains))

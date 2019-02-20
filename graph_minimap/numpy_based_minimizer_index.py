@@ -16,7 +16,8 @@ def get_hits_for_multiple_minimizers(minimizers, hasher_array, hash_to_index_pos
     """
     Ugly function that performs fast numpy chaining.
     """
-    minimum_anchors_in_chain = 3
+    minimum_anchors_in_chain = 1
+    skip_minimizers_with_more_than_hits = 1000
     max_distance_between_anchors_within_same_chain = 160
 
     # Get all anchors
@@ -25,6 +26,9 @@ def get_hits_for_multiple_minimizers(minimizers, hasher_array, hash_to_index_pos
 
     index_positions = hash_to_index_pos[hashes]
     lengths = hash_to_n_minimizers[hashes]
+    indexes_few_hits = lengths < skip_minimizers_with_more_than_hits
+    index_positions = index_positions[indexes_few_hits]
+    lengths = lengths[indexes_few_hits]
 
     anchors_positions = np.zeros(np.sum(lengths))
     anchors_chromosomes = np.zeros(np.sum(lengths))
@@ -74,8 +78,6 @@ def get_hits_for_multiple_minimizers(minimizers, hasher_array, hash_to_index_pos
         else:
             # Add anchor to existing chain
             chain_scores[chain_counter] += 1
-
-
 
     # Get the chains that we found, keep only those with high enough score
     accepted_chain_indexes = (chain_chromosomes != 0) & (chain_scores >= minimum_anchors_in_chain)

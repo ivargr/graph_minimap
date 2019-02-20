@@ -240,7 +240,7 @@ def minimizers_to_numpy(minimizers):
     return np.array([m[0] for m in minimizers])
 
 
-def get_chains(sequence, index, print_debug=False):
+def get_chains(sequence, index):
     minimizer_hashes, minimizer_offsets = get_read_minimizers(sequence)
 
     chains_chromosomes, chains_positions, chains_scores, chains_nodes = get_hits_for_multiple_minimizers(
@@ -252,7 +252,6 @@ def get_chains(sequence, index, print_debug=False):
         index._nodes,
         index._offsets
     )
-
     return ChainResult(chains_chromosomes, chains_positions, chains_scores, chains_nodes), len(minimizer_hashes)
 
 
@@ -334,6 +333,10 @@ class ChainResult:
         else:
             return 0
 
+    def __str__(self):
+        return "\n".join("chr%s:%d, score %d" %
+                         (int(self.chromosomes[i]), self.positions[i], self.scores[i]) for i in range(self.n_chains))
+
     def best_chain_is_correct(self, correct_position):
         if self.n_chains == 0:
             return False
@@ -357,11 +360,17 @@ class ChainResult:
                 return True
         return False
 
-    def align_best_chains(self, sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7, k=21, print_debug=False):
+    def align_best_chains(self, sequence, graphs, sequence_graphs, stop_early_if_two_with_high_score_found=True):
         n_chains_to_align = min(self.n_chains, min(75, max(5, self.n_chains // 2)))
 
         alignments = []
+        n_high_score_found = 0
         for j in range(n_chains_to_align):
+
+            if n_high_score_found >= 2 and stop_early_if_two_with_high_score_found:
+                # Two with high score already means we won't get any mapq60 correct mapping
+                logging.info("STOPPING EARLY")
+                break
 
             chromosome = int(self.chromosomes[j])
             position = self.positions[j]
@@ -371,11 +380,15 @@ class ChainResult:
             sequence_graph = sequence_graphs[str(chromosome)]
 
             aligner = Aligner(graph, sequence_graph, node, sequence,
-                              n_bp_to_traverse_left=read_offset + 32,
+                              n_bp_to_traverse_left=read_offset + 100,
                               n_bp_to_traverse_right=len(sequence)-read_offset + 40)
 
             #print("Aligning node %d" % node)
             alignment, score = aligner.align()
+
+            if score >= 280:
+                n_high_score_found += 1
+
             if not alignment:
                 alignment = Alignment([], [], 0, False, chromosome, position)
             else:
@@ -388,13 +401,12 @@ class ChainResult:
 
 
 def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mismatches_allowed=7, k=21, print_debug=False):
-    chains, n_minimizers = get_chains(sequence, index, print_debug=print_debug)
+    chains, n_minimizers = get_chains(sequence, index)
     if print_debug:
-        logging.debug("=== CHAINS FOUND ===")
-        logging.debug("\n ---- ".join(str(c) for c in chains))
+        logging.info(" == Chains found: == \n%s" % str(chains))
+
     #alignments = Alignments([])
-    alignments = chains.align_best_chains(sequence, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
-                                          k=k, print_debug=print_debug)
+    alignments = chains.align_best_chains(sequence, graphs, sequence_graphs)
     if print_debug:
         logging.debug("Alignments: \n%s" % "\n".join(str(a) for a in alignments.alignments))
 
