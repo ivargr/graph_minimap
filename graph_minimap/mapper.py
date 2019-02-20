@@ -240,17 +240,18 @@ def minimizers_to_numpy(minimizers):
     return np.array([m[0] for m in minimizers])
 
 
-def get_chains(sequence, index):
+def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
+                            index_hash_to_n_minimizers, index_chromosomes, index_positions, index_nodes, index_offsets):
     minimizer_hashes, minimizer_offsets = get_read_minimizers(sequence)
 
     chains_chromosomes, chains_positions, chains_scores, chains_nodes = get_hits_for_multiple_minimizers(
-        minimizer_hashes, index.hasher._hashes,
-        index._hash_to_index_pos_dict,
-        index._hash_to_n_minimizers_dict,
-        index._chromosomes,
-        index._linear_ref_pos,
-        index._nodes,
-        index._offsets
+        minimizer_hashes, index_hasher_array,
+        index_hash_to_index_pos,
+        index_hash_to_n_minimizers,
+        index_chromosomes,
+        index_positions,
+        index_nodes,
+        index_offsets
     )
     return ChainResult(chains_chromosomes, chains_positions, chains_scores, chains_nodes), len(minimizer_hashes)
 
@@ -400,10 +401,30 @@ class ChainResult:
         return Alignments(alignments)
 
 
-def map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes,  n_mismatches_allowed=7, k=21, print_debug=False):
-    chains, n_minimizers = get_chains(sequence, index)
+def map_read(sequence,
+            index_hasher_array,
+            index_hash_to_index_pos,
+            index_hash_to_n_minimizers,
+            index_chromosomes,
+            index_positions,
+            index_nodes,
+            index_offsets,
+            nodes,
+            sequences,
+            edges_indexes,
+            edges_edges,
+            edges_n_edges,
+            print_debug=False):
+
+    chains, n_minimizers = get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
+                                      index_hash_to_n_minimizers, index_chromosomes, index_positions,
+                                      index_nodes, index_offsets)
+
+    return Alignments([]), chains, n_minimizers
     if print_debug:
         logging.info(" == Chains found: == \n%s" % str(chains))
+
+    return 0, 0, 0
 
     #alignments = Alignments([])
     alignments = chains.align_best_chains(sequence, graphs, sequence_graphs)

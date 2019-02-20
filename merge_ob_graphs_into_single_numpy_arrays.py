@@ -85,6 +85,7 @@ print(edges_edges.dtype)
 #rev_edges_n_edges = np.concatenate(rev_edges_n_edges)
 #rev_edges_edges = np.concatenate(rev_edges_edges)
 
+"""
 print("Edges:")
 index = edges_indexes[5000000]
 print(edges_edges[index:index+edges_n_edges[5000000]])
@@ -102,24 +103,13 @@ index = edges_indexes[22000001]
 print(edges_edges[index:index+edges_n_edges[22000001]])
 
 print("Rev edges")
-"""
-index = rev_edges_indexes[5000000]
-print(rev_edges_edges[index:index+rev_edges_n_edges[15000000]])
-index = rev_edges_indexes[5000001]
-print(rev_edges_edges[index:index+rev_edges_n_edges[15000001]])
-index = rev_edges_indexes[15000000]
-print(rev_edges_edges[index:index+rev_edges_n_edges[15000000]])
-index = rev_edges_indexes[15000001]
-print(rev_edges_edges[index:index+rev_edges_n_edges[15000001]])
-"""
-
 print(sequences[5000000])
 print(sequences[15000000])
 print(nodes[5000000])
 print(nodes[5000001])
 print(nodes[15000000])
 print(nodes[15000001])
-
+"""
 print("Total nodes: %d" % n_nodes)
 
 

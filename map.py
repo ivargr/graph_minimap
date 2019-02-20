@@ -1,11 +1,12 @@
 import logging
 import sys
 import sqlite3
+import numpy as np
 
 print_debug=False
 debug_read = False
-if len(sys.argv) > 5:
-    debug_read = sys.argv[5]
+if len(sys.argv) > 4:
+    debug_read = sys.argv[4]
 
 if debug_read:
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -19,11 +20,7 @@ from graph_minimap.mapper import map_read, read_graphs, get_correct_positions, r
 from graph_minimap.numpy_based_minimizer_index import NumpyBasedMinimizerIndex
 
 index_file = sys.argv[2]
-if ".db" in index_file:
-    minimizer_db = sqlite3.connect(sys.argv[2])
-    index = minimizer_db.cursor()
-else:
-    index = NumpyBasedMinimizerIndex.from_file(index_file)
+index = NumpyBasedMinimizerIndex.from_file(index_file)
 
 i = 0
 n_correct_chain_found = 0
@@ -35,10 +32,24 @@ n_secondary_correct = 0
 n_mapq_60 = 0
 n_mapq_60_and_wrong = 0
 
-graph_dir = sys.argv[3]
-chromosomes = sys.argv[4].split(",")
+logging.info("Reading graph numpy arrays")
+graph_data = np.load(sys.argv[3])
+nodes = graph_data["nodes"]
+sequences = graph_data["sequences"]
+edges_indexes = graph_data["edges_indexes"]
+edges_edges = graph_data["edges_edges"]
+edges_n_edges = graph_data["edges_n_edges"]
+logging.info("All graph data read")
 
-graphs, sequence_graphs, linear_ref_nodes = read_graphs(graph_dir, chromosomes)
+# Get index numpy arrays
+index_hasher_array = index.hasher._hashes
+index_hash_to_index_pos = index._hash_to_index_pos_dict
+index_hash_to_n_minimizers = index._hash_to_n_minimizers_dict
+index_chromosomes = index._chromosomes
+index_positions = index._linear_ref_pos
+index_nodes = index._nodes
+index_offsets = index._offsets
+
 
 correct_positions = get_correct_positions()
 n_minimizers_tot = 0
@@ -53,8 +64,22 @@ for name, sequence in read_fasta(sys.argv[1]).items():
         logging.info("%d processed" % i)
     i += 1
     correct_chrom, correct_pos = correct_positions[name]
-    alignments, chains, n_minimizers = map_read(sequence, index, graphs, sequence_graphs, linear_ref_nodes, n_mismatches_allowed=7,
-                                  k=21, print_debug=print_debug)
+    alignments, chains, n_minimizers = map_read(sequence,
+                                                index_hasher_array,
+                                                index_hash_to_index_pos,
+                                                index_hash_to_n_minimizers,
+                                                index_chromosomes,
+                                                index_positions,
+                                                index_nodes,
+                                                index_offsets,
+                                                nodes,
+                                                sequences,
+                                                edges_indexes,
+                                                edges_edges,
+                                                edges_n_edges,
+                                                print_debug=print_debug
+                                                )
+
 
     n_minimizers_tot += n_minimizers
     # print("%d alignments" % len(alignments.alignments))
