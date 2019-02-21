@@ -8,7 +8,7 @@ setup(name='graph_minimap',
       author_email='',
       license='MIT',
       zip_safe=False,
-      install_requires=['numpy', 'python-coveralls', 'pyvg', 'sortedcontainers',
+      install_requires=['numpy', 'python-coveralls', 'numba', 'pathos', 'sortedcontainers',
                         'pyfaidx', 'scikit-bio', 'tqdm'],
       classifiers=[
             'Programming Language :: Python :: 3'

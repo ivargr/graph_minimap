@@ -1,11 +1,7 @@
 import logging
 logging.basicConfig(level=logging.INFO)
 import sys
-import judy
-import sqlite3
 import numpy as np
-import pickle
-import shelve
 from graph_minimap.logn_hash_map import LogNHashMap
 from numba import jit
 
@@ -126,7 +122,6 @@ class NumpyBasedMinimizerIndex:
     def from_file(cls, file_name):
         hasher = LogNHashMap.from_file(file_name + ".hasher")
         data = np.load(file_name + ".npz")
-        print(data.files)
         hash_to_index_pos_dict = data["arr_0"]
         hash_to_n_minimizers_dict = data["arr_1"]
         chromosomes = data["arr_2"]

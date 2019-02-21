@@ -1,4 +1,10 @@
+python3 map.py sim.fa testindex whole_genome.graphs.npz
+python3 map.py human_data/sim.fa human_data/index_all_chr human_data/whole_genome.graphs.npz
 
+
+rsync --exclude *.db* --exclude *.np* --exclude mhc_graph/ --exclude human_data/ --exclude mhc_graph2/ --exclude *.fa --exclude *.tsv -avp graph_minimap root@ivarg.ddns.net:/home/ivar/dev/.
+
+vg 10m: 39m 16 threads
 
 
 # Find critical nodes

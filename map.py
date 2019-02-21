@@ -2,11 +2,13 @@ import logging
 import sys
 import sqlite3
 import numpy as np
+from pathos.multiprocessing import Pool
+from Bio.Seq import Seq
 
 print_debug=False
 debug_read = False
-if len(sys.argv) > 4:
-    debug_read = sys.argv[4]
+if len(sys.argv) > 5:
+    debug_read = sys.argv[5]
 
 if debug_read:
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -15,6 +17,7 @@ if debug_read:
 else:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s: %(message)s')
 
+n_threads = int(sys.argv[4])
 logging.info("Initing db")
 from graph_minimap.mapper import map_read, read_graphs, get_correct_positions, read_fasta
 from graph_minimap.numpy_based_minimizer_index import NumpyBasedMinimizerIndex
@@ -53,12 +56,13 @@ index_offsets = index._offsets
 correct_positions = get_correct_positions()
 n_minimizers_tot = 0
 
-all_alignments = []
-
 
 def map_read_wrapper(fasta_entry):
     name, sequence = fasta_entry
-    alignment = map_read(sequence,
+    reverse_sequence = str(Seq(sequence).reverse_complement())
+    alignments = []
+    for seq in [sequence, reverse_sequence]:
+        alignment = map_read(seq,
                         index_hasher_array,
                         index_hash_to_index_pos,
                         index_hash_to_n_minimizers,
@@ -73,41 +77,56 @@ def map_read_wrapper(fasta_entry):
                         edges_n_edges,
                         print_debug=print_debug
                         )
-    return name, alignment
+        alignments.append(alignment)
+    final_alignment = alignments[0]
+    final_alignment.alignments.extend(alignments[1].alignments)
+    final_alignment.set_primary_alignment()
+    final_alignment.set_mapq()
+    final_alignment.name = name
+    final_alignment.text_line = final_alignment.to_text_line()
+    return name, final_alignment
 
-from multiprocessing import Pool
 
-pool = Pool(10)
+def map_all():
+    all_alignments = []
+    fasta_entries = ([entry[0], entry[1]] for entry in read_fasta(sys.argv[1]))
 
-fasta_entries = read_fasta(sys.argv[1]).items()
+    if n_threads == 1:
+        map_function = map
+        logging.info("Not running in parallel")
+    else:
+        logging.info("Creating pool of %d workers" % n_threads)
+        pool = Pool(n_threads)
+        logging.info("Pool crreated")
+        map_function = pool.imap_unordered
+    i = 0
+    for name, alignment in map_function(map_read_wrapper, fasta_entries):
+        if i % 1000 == 0:
+            logging.info("%d processed" % i)
+        alignment.name = name
+        print(alignment.to_text_line())
 
-i = 0
-for alignment in pool.imap_unordered(map_read_wrapper, fasta_entries):
-    if i % 50 == 0:
-        logging.info("%d processed" % i)
-    all_alignments.append(alignment)
-    i += 1
+        all_alignments.append((name, alignment))
+        i += 1
+        #if i >= 9900:
+        #    logging.info("Breaking")
+        #    break
 
-"""
-for name, sequence in read_fasta(sys.argv[1]).items():
-    #logging.info(" =========== MAPPING %s sequence: %s ==========" % (name, ""))
-    if debug_read:
-        if name != debug_read:
-            continue
+    if n_threads > 1:
+        logging.info("Closing pool")
+        pool.close()
+        logging.info("Pool closed")
+    return all_alignments
 
-    alignment = map_read_wrapper(sequence)
-    if i % 50 == 0:
-        logging.info("%d processed" % i)
-    i += 1
-    all_alignments.append((name, alignment))
 
-"""
+logging.info("Mapping all reads")
+all_alignments = map_all()
+logging.info("Getting alignment stats")
 
 for name, alignments in all_alignments:
     chains = alignments.chains
 
     correct_chrom, correct_pos = correct_positions[name]
-    # print("%d alignments" % len(alignments.alignments))
     if alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
         n_correctly_aligned += 1
     else:
@@ -150,13 +169,13 @@ for name, alignments in all_alignments:
     #if i >= 1000:
     #    break
 
-print("Total reads: %d" % i)
-print("N managed to aligne somewhere: %d" % n_aligned)
-print("N correctly aligned: %d" % n_correctly_aligned)
-print("N correctly aligned among mapq 60: %d/%d" % (n_mapq_60 - n_mapq_60_and_wrong, n_mapq_60))
-print("N a secondary alignment is correct: %d" % n_secondary_correct)
-print("N correct chains found: %d" % n_correct_chain_found)
-print("N best chain is correct one: %d" % n_best_chain_is_correct)
-print("N best chain is among top half of chains: %d" % n_best_chain_among_top_half)
+logging.info("Total reads: %d" % len(all_alignments))
+logging.info("N managed to aligne somewhere: %d" % n_aligned)
+logging.info("N correctly aligned: %d" % n_correctly_aligned)
+logging.info("N correctly aligned among mapq 60: %d/%d" % (n_mapq_60 - n_mapq_60_and_wrong, n_mapq_60))
+logging.info("N a secondary alignment is correct: %d" % n_secondary_correct)
+logging.info("N correct chains found: %d" % n_correct_chain_found)
+logging.info("N best chain is correct one: %d" % n_best_chain_is_correct)
+logging.info("N best chain is among top half of chains: %d" % n_best_chain_among_top_half)
 # if i == 3:
 #    break

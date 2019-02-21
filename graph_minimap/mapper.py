@@ -146,29 +146,24 @@ def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
     return ChainResult(chains_chromosomes, chains_positions, chains_scores, chains_nodes), len(minimizer_hashes)
 
 
-
-def align_chain(node, chromosome, linear_pos, sequence, graph_nodes, graph_sequences, edges_index,
-                edges_edges, edges_n_edges, print_debug=False):
-
-
-    aligner = GsswAlignerFromObNumpyGraphs(graph_nodes, graph_sequences, edges_index, edges_edges, edges_n_edges,
-                                           sequence, node)
-    alignment, score = aligner.align()
-
-    if not alignment:
-        return Alignment([], [], 0, False, chromosome, linear_pos)
-
-    return Alignment(alignment, [], score, True, chromosome, linear_pos)
-
 class Alignments:
-    def __init__(self, alignments, chains):
+    def __init__(self, alignments, chains, name=None):
+        self.name = name
         self.alignments = alignments
         self.chains = chains
         self.primary_alignment = None
-        self._set_primary_alignment()
-        self._set_mapq()
+        #self.set_primary_alignment()
+        #self.set_mapq()
 
-    def _set_mapq(self, max_score=300):
+    def to_text_line(self):
+        if not self.primary_alignment:
+            return "%s\t1\t0\t0\t0\t." % self.name
+        else:
+            a = self.primary_alignment
+            return "%s\t%d\t%d\t%d\t%d\t%s" % (self.name, a.chromosome, a.approximate_linear_pos,
+                                               self.mapq, a.score, ','.join(str(n) for n in a.interval1))
+
+    def set_mapq(self, max_score=300):
         if not self.primary_alignment:
             self.mapq = 0
             return
@@ -205,7 +200,7 @@ class Alignments:
                     return True
         return False
 
-    def _set_primary_alignment(self):
+    def set_primary_alignment(self):
         # Pick the best one
         if len(self.alignments) == 0:
             self.primary_alignment = False
@@ -275,17 +270,28 @@ def map_read(sequence,
 
     # Find best chains, align them
     alignments = []
-    for j in range(n_chains_to_align):
-        chromosome = int(chains.chromosomes[j])
-        position = chains.positions[j]
-        node = int(chains.nodes[j])
 
-        local_nodes, local_edges = get_local_nodes_and_edges(node, nodes, sequences, edges_indexes,
-                                                                              edges_edges, edges_n_edges)
-        local_sequences = sequences[local_nodes]
-        alignment, score = align(local_nodes, local_sequences, local_edges, sequence)
-        alignment = Alignment(alignment, [], score, True, chromosome, position)
-        alignments.append(alignment)
+    if False and n_chains_to_align > 50:
+        return Alignments([Alignment([], [], 0, False, 0, 0)], chains)
+
+
+    if chains.n_chains > 0:
+        max_chain_score = max(chains.scores)
+        for j in range(n_chains_to_align):
+            chain_score = chains.scores[j]
+            if False and j > 4 and chain_score < max_chain_score - 3:
+                break
+
+            chromosome = int(chains.chromosomes[j])
+            position = chains.positions[j]
+            node = int(chains.nodes[j])
+
+            local_nodes, local_edges = get_local_nodes_and_edges(node, nodes, sequences, edges_indexes,
+                                                                                  edges_edges, edges_n_edges)
+            local_sequences = sequences[local_nodes]
+            alignment, score = align(local_nodes, local_sequences, local_edges, sequence)
+            alignment = Alignment(alignment, [], score, True, chromosome, position)
+            alignments.append(alignment)
 
     if print_debug:
         logging.debug("Alignments: \n%s" % "\n".join(str(a) for a in alignments))
