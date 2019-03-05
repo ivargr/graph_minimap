@@ -13,6 +13,7 @@ def letter_sequence_to_numeric(sequence):
     numeric[np.where(sequence == "m")[0]] = 4
     return numeric
 
+
 def get_correct_positions(file_name="sim.gam.truth.tsv"):
     positions = {}
     with open(file_name) as f:
