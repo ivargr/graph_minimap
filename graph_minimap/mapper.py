@@ -27,12 +27,12 @@ def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
 @jit(nopython=True)
 def get_local_nodes_and_edges(local_node, nodes, sequences, edges_indexes, edges_edges, edges_n_edges, nodes_to_dist, dist_to_nodes):
     # Naive fast implementation: Get all nodes and edges locally
-    #min_node = max(1, local_node - 50)
-    #max_node = min(len(nodes)-1, local_node + 60)
+    min_node = max(1, local_node - 50)
+    max_node = min(len(nodes)-1, local_node + 60)
 
     linear_offset = int(nodes_to_dist[local_node])
-    min_node = dist_to_nodes[np.maximum(0, linear_offset - 150)]
-    max_node = dist_to_nodes[np.minimum(len(dist_to_nodes)-1, linear_offset + 150)]
+    #min_node = dist_to_nodes[np.maximum(0, linear_offset - 150)]
+    #max_node = dist_to_nodes[np.minimum(len(dist_to_nodes)-1, linear_offset + 150)]
 
     nodes_found = []
     edges_found = []
@@ -88,7 +88,7 @@ def map_read(sequence,
     alignments = []
 
     if chains.n_chains + n_chains_init > dont_align_reads_with_more_chains_than:
-        logging.debug("N chains: %d" % chains.n_chains)
+        logging.debug("Skipping because too many chains (%d chains)" % chains.n_chains)
         return Alignments([], chains)
 
     if chains.n_chains > 0:
