@@ -1,6 +1,24 @@
 python3 map.py sim.fa testindex whole_genome.graphs.npz
 python3 map.py human_data/sim.fa human_data/index_all_chr human_data/whole_genome.graphs.npz
 
+python3 map.py sim_5k.fa index_chr6_new whole_genome.graphs.npz 1 aligned.gma
+
+
+- Lage critical nodes på nytt for whole genome
+- Lage indeks per krom på nytt for whole genome. Skal vi lage med w = 5 ??
+    - Kunne kanskje vært interesssant å prøve mhc med w = 7 og se om det gir stor forskjell
+    - Interessant å se hvor mange flere minimizers det blir.
+- Merge indeksene
+
+Plan nå:
+    - Fullføre ny index på helgenom
+        + Lag nye critical nodes
+        + Sett på ny create_index.py
+        - Kjør merge_minimizer_dbs
+    - Sjekke mapping på helgenom, debugge, antar det bør være mulig å få bra resultater
+    - Når bra resultater, kjør two-step mapping
+    - Hvis ikke bra resultater, dropp hele minimap for nå, fullfør artikkel uten
+
 
 rsync --exclude *.db* --exclude *.np* --exclude mhc_graph/ --exclude human_data/ --exclude mhc_graph2/ --exclude *.fa --exclude *.tsv -avp graph_minimap root@ivarg.ddns.net:/home/ivar/dev/.
 
@@ -19,7 +37,7 @@ done
 chromosomes="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,X"
 for chrom in $(echo $chromosomes | tr "," "\n")
 	do
-    python3 /home/ivar/dev/graph_minimap/create_index.py $chrom /data/bioinf/human_1pc/ &
+    python3 /home/ivar/dev/graph_minimap/create_index.py $chrom /data/bioinf/human_1pc/ $chrom &
 done
 
 Plan nå:

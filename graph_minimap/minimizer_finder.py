@@ -11,17 +11,43 @@ class Minimizers:
     def __init__(self, database=None):
         self.minimizers = []
         self.database = database
+        self.minimizer_hashes = []
+        self.minimizer_nodes = []
+        self.minimizer_offsets = []
+        self.minimizer_linear_pos = []
+
+    def to_file(self, file_name):
+        logging.info("Writing to file %s" % file_name)
+        np.savez(file_name,
+                 hashes=np.array(self.minimizer_hashes),
+                 nodes=np.array(self.minimizer_nodes),
+                 offsets=np.array(self.minimizer_offsets),
+                 linear_pos=np.array(self.minimizer_linear_pos))
+
+        logging.info("Done writing to file")
+
+
+
 
     def add_minimizer(self, node, position, hash, chromosome, linear_start):
+        if hash == 0:
+            return
         if chromosome == "X":
             chromosome = 23
+        self.minimizer_hashes.append(hash)
+        self.minimizer_nodes.append(node)
+        self.minimizer_offsets.append(position)
+        self.minimizer_linear_pos.append(linear_start)
+        self.minimizers.append((node, position, hash))
+        return
+
+
         if self.database is not None:
             # Add to the database
             self.database.execute(
                 "insert or ignore into minimizers (minimizer_hash, chromosome, linear_offset, node, offset, minimizer_offset) VALUES (?,?,?,?,?,?)",
                 (hash, chromosome, int(linear_start), int(node), int(position), 0))
 
-        self.minimizers.append((node, position, hash))
 
     def has_minimizer(self, node, position):
         for minimizer in self.minimizers:
@@ -43,8 +69,8 @@ class MinimizerFinder:
         self.m = self.k + self.w
         self.chromosome = chromosome
 
-        #self.max_search_to_node = 555449  # self.graph.get_first_blocks()[0]
         self.max_search_to_node = self.graph.get_first_blocks()[0]
+        self.max_search_to_node = 117969570  # self.graph.get_first_blocks()[0]
         self._n_basepairs_traversed_on_critical_nodes = 0
 
         self.bases_in_path = []
@@ -84,6 +110,7 @@ class MinimizerFinder:
         # We always start at end of max_search_to_node for simplicity (only issue is we don't search first node)
         # Fill last m hashes and bases
         while True:
+            self._n_basepairs_traversed_on_critical_nodes = 0
             current_node = self.max_search_to_node
             self.print_debug("New local search starting from node %d" % current_node)
             if current_node == self.max_graph_node:
@@ -118,7 +145,9 @@ class MinimizerFinder:
     def _process_node(self, node_id):
         # For every base pair in node, dynamically calculate next hash
         node_base_values = self.sequence_graph.get_numeric_node_sequence(node_id)
-        #self.print_debug("Hashes in path: %s" % self.hashes_in_path)
+        self.print_debug("Node seq: %s" % self.sequence_graph.get_sequence(node_id))
+        if node_id == 117092482:
+            self.print_debug("Hashes in path: %s" % self.hashes_in_path)
         for pos in range(0, self.graph.blocks[node_id].length()):
             prev_hash = self.hashes_in_path[-1]
             prev_base_value = self.bases_in_path[len(self.bases_in_path)-self.k]
@@ -127,11 +156,13 @@ class MinimizerFinder:
             new_hash = new_hash + node_base_values[pos]
 
 
-            previous_hashes = np.array(self.hashes_in_path[-self.w:])
-            #self.print_debug("pos %s: hash: %s. Previous hashes: %s. Prev bases: %s" % (pos, new_hash, previous_hashes, self.bases_in_path[-self.w:]))
+            previous_hashes = np.array(self.hashes_in_path[-self.w+1:])
+            if node_id == 117969600:
+                self.print_debug("pos %s: hash: %s. Previous hashes: %s. Prev bases: %s" % (pos, new_hash, ','.join(str(int(h)) for h in previous_hashes), self.bases_in_path[-self.w:]))
+                self.print_debug("Prev sequence: %s" % "".join(self.sequence_graph._letters[self.bases_in_path[-self.k:]]))
             if np.all(previous_hashes >= new_hash):
                 # Found a minimizer
-                if node_id in [555453, 555455, 555456, 555457, 555458, 555460, 555461, 555463, 555464, 555466, 555467]:
+                if node_id in [117969600, 117969601]:
                     self.print_debug(" Found minimizer %d on node %d, pos %d" % (new_hash, node_id, pos))
                 try:
                     linear_ref_pos, end = Interval(pos, pos+1, [node_id], self.graph).to_linear_offsets2(self.linear_ref)
@@ -148,7 +179,6 @@ class MinimizerFinder:
         
 
     def print_debug(self, text):
-        return
         print(' '.join("   " for _ in range(self.recursion_depth)) + text)
 
     def _search_from_node(self, node_id):
@@ -166,7 +196,12 @@ class MinimizerFinder:
         on_ref = False
         if node_id in self.linear_ref_nodes:
             on_ref = True
-        self.print_debug("== Searching from node %d (depth: %d, on ref: %s) == " % (node_id, self.recursion_depth, on_ref))
+        self.print_debug("== Searching from node %d (depth: %d, on ref: %s, is crit: %s) == " % (node_id, self.recursion_depth, on_ref, node_id in self._critical_nodes))
+
+
+        if node_id >= 117969598 + 10:
+            import sys
+            sys.exit()
 
         list_offset = len(self.bases_in_path)
         assert len(self.bases_in_path) == len(self.hashes_in_path)
@@ -207,7 +242,7 @@ class MinimizerFinder:
                 self.print_debug("Skipping because visited before. Visisted %d times before" % self.visit_counter[node_id])
                 self.n_skipped_visited_before += 1
             elif self.visit_counter[next_node] >= 4:
-                self.print_debug("Skipping next %d because recursion depth > 2 "  % next_node)
+                self.print_debug("Skipping next %d because visisted too many times."  % next_node)
                 self.n_skipped_too_many_edges += 1
 
             #elif self.recursion_depth > 2 and next_node not in self.linear_ref_nodes and self.visit_counter[node_id] > 0:

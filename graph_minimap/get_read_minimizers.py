@@ -26,7 +26,7 @@ def convert_read_to_numeric(read):
 
 
 @jit(nopython=True)
-def get_read_minimizers(read, k, w):
+def get_read_minimizers(read, k, w, require_full_left_minimizer=True):
     current_hash = kmer_to_hash_fast(read[0:k], k=k)
     hashes = np.zeros(len(read))
     hashes[k-1] = current_hash
@@ -49,17 +49,30 @@ def get_read_minimizers(read, k, w):
             if hashes[j] < min_hash:
                 min_hash = hashes[j]
 
-        # Collect the minimizers
-        for j in range(pos, min(len(read), pos+w)):
-            if hashes[j] == min_hash:
-                m = (hashes[j], j-k+1 + k)  # +k bc we want position to be end of minimizer to be consistent with mapping
+        if require_full_left_minimizer:
+            # Minimizer needs to be smaller than all hashes w bp left
+            # thus, we only need to check pos+w
+            if pos+w >= len(read):
+                break
+            if hashes[pos+w-1] == min_hash:
+                m = (hashes[pos+w-1], pos+w-1)  # +k bc we want position to be end of minimizer to be consistent with mapping
                 if m not in minimizers_unique:
                     minimizers.append(m)
                     minimizer_hashes.append(m[0])
                     minimizer_offsets.append(m[1])
                     minimizers_unique.add(m)
+        else:
+            # Collect the minimizers
+            for j in range(pos, min(len(read), pos+w)):
+                if hashes[j] == min_hash:
+                    m = (hashes[j], j-k+1 + k)  # +k bc we want position to be end of minimizer to be consistent with mapping
+                    if m not in minimizers_unique:
+                        minimizers.append(m)
+                        minimizer_hashes.append(m[0])
+                        minimizer_offsets.append(m[1])
+                        minimizers_unique.add(m)
 
-    return np.array(minimizer_hashes), minimizer_offsets
+    return np.array(minimizer_hashes), np.array(minimizer_offsets)
 
 
 if __name__ == "__main__":

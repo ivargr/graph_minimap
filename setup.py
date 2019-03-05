@@ -13,7 +13,8 @@ setup(name='graph_minimap',
       classifiers=[
             'Programming Language :: Python :: 3'
       ],
-      #entry_points = {
-      #'console_scripts': ['two_step_graph_mapper=two_step_graph_mapper.command_line_interface:main'],
-      #}
+      entry_points={
+            'console_scripts': ['graph_minimap=graph_minimap.map:map_all',
+                                'graph_minimap_index=graph_minimap.index:main'],
+      }
 )

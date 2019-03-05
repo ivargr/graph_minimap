@@ -1,7 +1,7 @@
 import math
 import logging
 from .alignment import Alignment
-from pygssw.align import Aligner
+from pygssw import OffsetBasedGraphAligner as Aligner
 
 
 class Chain:

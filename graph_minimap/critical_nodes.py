@@ -17,9 +17,9 @@ def find_critical_nodes(graph, linear_ref):
         if current_node in linear_ref_nodes and prev_edge_out < 2:
             critical_nodes.add(current_node)
 
-        prev_edge_out = len(prev_nodes)
 
         next_nodes = graph.adj_list[current_node]
+        prev_edge_out = len(next_nodes)
         #print("   Next nodes: %s" % next_nodes)
         if len(next_nodes) == 0:
             break
@@ -50,7 +50,7 @@ if __name__ == "__main__":
     graph_dir = sys.argv[2]
 
     graph = Graph.from_file(graph_dir + chromosome + ".nobg")
-    linear_ref = NumpyIndexedInterval.from_file(chromosome + "_linear_pathv2.interval")
+    linear_ref = NumpyIndexedInterval.from_file(graph_dir + chromosome + "_linear_pathv2.interval")
 
     nodes = find_critical_nodes(graph, linear_ref)
     with open(chromosome + ".critical_nodes", "wb") as f:

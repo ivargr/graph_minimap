@@ -1,14 +1,17 @@
 import logging
 import sys
+import time
 import sqlite3
 import numpy as np
 from pathos.multiprocessing import Pool
 from Bio.Seq import Seq
 
+
+
 print_debug=False
 debug_read = False
-if len(sys.argv) > 5:
-    debug_read = sys.argv[5]
+if len(sys.argv) > 6:
+    debug_read = sys.argv[6]
 
 if debug_read:
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -44,13 +47,15 @@ edges_n_edges = graph_data["edges_n_edges"]
 logging.info("All graph data read")
 
 # Get index numpy arrays
-index_hasher_array = index.hasher._hashes
+index_hasher_array = np.concatenate([index.hasher._hashes, np.array([2e32-1])])  # An extra element for lookup for indexes that are too large
 index_hash_to_index_pos = index._hash_to_index_pos_dict
 index_hash_to_n_minimizers = index._hash_to_n_minimizers_dict
 index_chromosomes = index._chromosomes
 index_positions = index._linear_ref_pos
 index_nodes = index._nodes
 index_offsets = index._offsets
+nodes_to_dist = graph_data["node_to_linear_offsets"]
+dist_to_nodes = graph_data["linear_offsets_to_nodes"]
 
 
 correct_positions = get_correct_positions()
@@ -59,8 +64,12 @@ n_minimizers_tot = 0
 
 def map_read_wrapper(fasta_entry):
     name, sequence = fasta_entry
+    if print_debug and name != debug_read:
+        return name, None
+
     reverse_sequence = str(Seq(sequence).reverse_complement())
     alignments = []
+    n_chains_init = 0
     for seq in [sequence, reverse_sequence]:
         alignment = map_read(seq,
                         index_hasher_array,
@@ -75,8 +84,14 @@ def map_read_wrapper(fasta_entry):
                         edges_indexes,
                         edges_edges,
                         edges_n_edges,
-                        print_debug=print_debug
+                        nodes_to_dist,
+                        dist_to_nodes,
+                        k=21,
+                        w=10,
+                        print_debug=print_debug,
+                        n_chains_init=n_chains_init
                         )
+        n_chains_init += alignment.chains.n_chains
         alignments.append(alignment)
     final_alignment = alignments[0]
     final_alignment.alignments.extend(alignments[1].alignments)
@@ -90,6 +105,8 @@ def map_read_wrapper(fasta_entry):
 def map_all():
     all_alignments = []
     fasta_entries = ([entry[0], entry[1]] for entry in read_fasta(sys.argv[1]))
+    out_file_name = sys.argv[5]
+    out_file = open(out_file_name, "w")
 
     if n_threads == 1:
         map_function = map
@@ -101,13 +118,24 @@ def map_all():
         map_function = pool.imap_unordered
     i = 0
     for name, alignment in map_function(map_read_wrapper, fasta_entries):
-        if i % 1000 == 0:
+        if alignment is None:  # For debugging only
+            continue
+        if i % 100 == 0:
             logging.info("%d processed" % i)
-        alignment.name = name
-        print(alignment.to_text_line())
 
-        all_alignments.append((name, alignment))
+
+        alignment.name = name
+        out_file.writelines([alignment.text_line])
+
+        #all_alignments.append((name, alignment))
         i += 1
+
+        if False and len(alignment.chains.chromosomes) == 1 and alignment.chains.scores[0] == 1:
+            logging.warning("%s has 1 chain with 1 anchor" % name)
+            #print([int(m) for m in alignment.chains.minimizer_hashes])
+
+        if print_debug:
+            break
         #if i >= 9900:
         #    logging.info("Breaking")
         #    break
@@ -115,6 +143,7 @@ def map_all():
     if n_threads > 1:
         logging.info("Closing pool")
         pool.close()
+        time.sleep(3)
         logging.info("Pool closed")
     return all_alignments
 
@@ -123,6 +152,7 @@ logging.info("Mapping all reads")
 all_alignments = map_all()
 logging.info("Getting alignment stats")
 
+"""
 for name, alignments in all_alignments:
     chains = alignments.chains
 
@@ -136,7 +166,7 @@ for name, alignments in all_alignments:
     if alignments.primary_alignment is not False:
         n_aligned += 1
 
-    if alignments.mapq >= 60:
+    if alignments.mapq >= 30:
         n_mapq_60 += 1
         if not alignments.primary_is_correctly_aligned(correct_chrom, correct_pos, threshold=150):
             n_mapq_60_and_wrong += 1
@@ -145,7 +175,7 @@ for name, alignments in all_alignments:
     if alignments.any_alignment_is_correct(correct_chrom, correct_pos, threshold=150):
         n_secondary_correct += 1
 
-    if chains.n_chains > 5000:
+    if chains.n_chains > 5000000:
         logging.warning("%s has many chains" % name)
 
     # print(name, len(mapping.chains))
@@ -179,3 +209,4 @@ logging.info("N best chain is correct one: %d" % n_best_chain_is_correct)
 logging.info("N best chain is among top half of chains: %d" % n_best_chain_among_top_half)
 # if i == 3:
 #    break
+"""

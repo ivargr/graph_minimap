@@ -1,13 +1,14 @@
 
 
 class Alignment:
-    def __init__(self, interval1, interval2, score, aligned_successfully, chromosome, approximate_linear_pos):
+    def __init__(self, interval1, interval2, score, aligned_successfully, chromosome, approximate_linear_pos, chain_score=-1):
         self.interval1 = interval1
         self.interval2 = interval2
         self.score = score
         self.aligned_succesfully = aligned_successfully
         self.chromosome = chromosome
         self.approximate_linear_pos = approximate_linear_pos
+        self.chain_score = chain_score
 
     def __str__(self):
         return "Alignment(%d, %d, score: %d)" % (self.chromosome, self.approximate_linear_pos, self.score)
