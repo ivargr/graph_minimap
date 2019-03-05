@@ -1,14 +1,41 @@
+import sys
+import argparse
 import logging
 import sys
 import time
-import sqlite3
 import numpy as np
 from pathos.multiprocessing import Pool
 from Bio.Seq import Seq
+from graph_minimap.util import get_correct_positions
+from rough_graph_mapper.util import read_fasta
+from graph_minimap.mapper import map_read
+from graph_minimap.numpy_based_minimizer_index import NumpyBasedMinimizerIndex
+
+# All numpy data arrays. Defined globally on purpose because we want to use them in multiprocessing without them
+# being copied
+index_hasher_array = None
+index_hash_to_index_pos = None
+index_hash_to_n_minimizers = None
+index_chromosomes = None
+index_positions = None
+index_nodes = None
+index_offsets = None
+nodes_to_dist = None
+dist_to_nodes = None
 
 
+def main():
+    run_argument_parser(sys.arg[1:])
 
-print_debug=False
+
+def run_argument_parser(args):
+    parser = argparse.ArgumentParser(
+        description='Two Step Graph Mapper. Maps to a graph by first predicting a path, and then mapping to that path.',
+        prog='two_step_graph_mapper',
+        formatter_class=lambda prog: argparse.HelpFormatter(prog, max_help_position=50, width=100))
+
+
+print_debug = False
 debug_read = False
 if len(sys.argv) > 6:
     debug_read = sys.argv[6]
@@ -22,8 +49,7 @@ else:
 
 n_threads = int(sys.argv[4])
 logging.info("Initing db")
-from graph_minimap.mapper import map_read, read_graphs, get_correct_positions, read_fasta
-from graph_minimap.numpy_based_minimizer_index import NumpyBasedMinimizerIndex
+
 
 index_file = sys.argv[2]
 index = NumpyBasedMinimizerIndex.from_file(index_file)

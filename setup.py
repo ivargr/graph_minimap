@@ -14,7 +14,7 @@ setup(name='graph_minimap',
             'Programming Language :: Python :: 3'
       ],
       entry_points={
-            'console_scripts': ['graph_minimap=graph_minimap.map:map_all',
-                                'graph_minimap_index=graph_minimap.index:main'],
+            'console_scripts': ['graph_minimap=graph_minimap.map_command_line_interface:main',
+                                'graph_minimap_index=graph_minimap.index_command_line_interace:main'],
       }
 )

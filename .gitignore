@@ -10,3 +10,4 @@ mhc_graph
 *.pyc
 graph_minimap/__pycache__/*
 mhc_graph2
+*.pyc

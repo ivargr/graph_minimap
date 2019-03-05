@@ -1,14 +1,15 @@
 import numpy as np
 from numba import jit
+from .util import letter_sequence_to_numeric
 
 @jit(nopython=True)
 def kmer_to_hash_fast(kmer, k=21):
     numbers = np.sum(kmer * np.power(5, np.arange(0, k)[::-1]))
     return numbers
 
+
 @jit(nopython=True)
 def convert_read_to_numeric(read):
-
     numeric_read = np.zeros_like(read)
     for i in np.arange(0, len(read)):
         base = read[i]
@@ -23,6 +24,10 @@ def convert_read_to_numeric(read):
         elif base == "G":
             numeric_read[i] = 4
     return numeric_read
+
+
+def get_read_minimizers_from_read(read_sequence, k=21, w=10):
+    return get_read_minimizers(letter_sequence_to_numeric(read_sequence), k=k, w=w)
 
 
 @jit(nopython=True)
