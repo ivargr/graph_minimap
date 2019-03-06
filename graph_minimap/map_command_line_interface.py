@@ -138,10 +138,6 @@ def run_argument_parser(args):
     map_all(args)
 
 
-correct_positions = get_correct_positions()
-n_minimizers_tot = 0
-
-
 def map_all(args):
     n_threads = args.threads
 
