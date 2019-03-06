@@ -9,8 +9,9 @@ import numpy as np
 
 
 def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
-               index_hash_to_n_minimizers, index_chromosomes, index_positions, index_nodes, index_offsets):
-    minimizer_hashes, minimizer_offsets = get_read_minimizers_from_read(sequence, k=21, w=5)
+               index_hash_to_n_minimizers, index_chromosomes, index_positions, index_nodes, index_offsets,
+               k, w, min_chain_score, skip_minimizers_more_frequent_than):
+    minimizer_hashes, minimizer_offsets = get_read_minimizers_from_read(sequence, k=k, w=w)
 
     chains_chromosomes, chains_positions, chains_scores, chains_nodes = get_hits_for_multiple_minimizers(
         minimizer_hashes, minimizer_offsets, index_hasher_array,
@@ -19,7 +20,8 @@ def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
         index_chromosomes,
         index_positions,
         index_nodes,
-        index_offsets
+        index_offsets,
+        min_chain_score, skip_minimizers_more_frequent_than
     )
     return ChainResult(chains_chromosomes, chains_positions, chains_scores, chains_nodes, minimizer_offsets, minimizer_hashes), len(minimizer_hashes)
 
@@ -27,12 +29,12 @@ def get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
 @jit(nopython=True)
 def get_local_nodes_and_edges(local_node, nodes, sequences, edges_indexes, edges_edges, edges_n_edges, nodes_to_dist, dist_to_nodes):
     # Naive fast implementation: Get all nodes and edges locally
-    min_node = max(1, local_node - 50)
-    max_node = min(len(nodes)-1, local_node + 60)
+    #min_node = max(1, local_node - 50)
+    #max_node = min(len(nodes)-1, local_node + 60)
 
     linear_offset = int(nodes_to_dist[local_node])
-    #min_node = dist_to_nodes[np.maximum(0, linear_offset - 150)]
-    #max_node = dist_to_nodes[np.minimum(len(dist_to_nodes)-1, linear_offset + 150)]
+    min_node = dist_to_nodes[np.maximum(0, linear_offset - 150)]
+    max_node = dist_to_nodes[np.minimum(len(dist_to_nodes)-1, linear_offset + 150)]
 
     nodes_found = []
     edges_found = []
@@ -78,7 +80,8 @@ def map_read(sequence,
 
     chains, n_minimizers = get_chains(sequence, index_hasher_array, index_hash_to_index_pos,
                                       index_hash_to_n_minimizers, index_chromosomes, index_positions,
-                                      index_nodes, index_offsets)
+                                      index_nodes, index_offsets, k, w, min_chain_score,
+                                      skip_minimizers_more_frequent_than)
 
     n_chains_to_align = min(chains.n_chains, max_chains_align)   # min(chains.n_chains, min(1000, max(15, chains.n_chains // 3)))l
     if print_debug:

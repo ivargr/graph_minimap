@@ -25,7 +25,11 @@ nodes_to_dist = None
 dist_to_nodes = None
 print_debug = False
 debug_read = False
-
+min_chain_score = None
+skip_minimizers_more_frequent_than = None
+max_chains_align = None
+k = None
+w = None
 
 def main():
     run_argument_parser(sys.argv[1:])
@@ -35,7 +39,7 @@ def read_index_and_data(args):
     global nodes, sequences, edges_indexes, edges_edges, edges_n_edges, index_hasher_array, index_hash_to_index_pos, \
            index_hash_to_n_minimizers, index_chromosomes, index_positions, index_nodes, index_offsets, nodes_to_dist, \
            dist_to_nodes
-    global debug_read, print_debug
+    global debug_read, print_debug, min_chain_score, skip_minimizers_more_frequent_than, max_chains_align, k, w
 
     logging.info("Initing db")
 
@@ -63,6 +67,12 @@ def read_index_and_data(args):
     dist_to_nodes = graph_data["linear_offsets_to_nodes"]
 
     # Parse other command line options
+    min_chain_score = args.min_chain_score
+    skip_minimizers_more_frequent_than = args.skip_minimizers_more_frequent_than
+    max_chains_align = args.max_chains_align
+    k = args.kmer_length
+    w = args.window_size
+
     print_debug = False
     if args.debug_read is not None:
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)s: %(message)s')
@@ -96,13 +106,15 @@ def map_read_wrapper(fasta_entry):
                         edges_n_edges,
                         nodes_to_dist,
                         dist_to_nodes,
-                        k=21,
-                        w=10,
+                        k=k,
+                        w=w,
                         print_debug=print_debug,
                         n_chains_init=n_chains_init,
-                        min_chain_score=10,
-                        skip_minimizers_more_frequent_than=2500
+                        min_chain_score=min_chain_score,
+                        skip_minimizers_more_frequent_than=skip_minimizers_more_frequent_than,
+                        max_chains_align=max_chains_align
                         )
+
         n_chains_init += alignment.chains.n_chains
         alignments.append(alignment)
     final_alignment = alignments[0]
@@ -122,10 +134,19 @@ def run_argument_parser(args):
 
     parser.add_argument("-f", "--fasta", required=True)
     parser.add_argument("-i", "--index", required=True)
-    parser.add_argument("-g", "--graph", required=True)
-    parser.add_argument("-o", "--out-file", required=True)
-    parser.add_argument("-c", "--min-chain-score", type=int, default=1, required=False)
+    parser.add_argument("-g", "--graph", required=True, help="Ob numpy graph")
+    parser.add_argument("-o", "--out-file", required=True, help='File that alignments will be writtein to')
+    parser.add_argument("-M", "--max-chains-align", required=False, type=int, default=350,
+                        help='Max chains to align. Defualt 350')
+    parser.add_argument("-q", "--skip-minimizers-more-frequent-than", type=int, default=2500, required=False,
+                        help="Don't consider index hits against minimizers that are more freq than this. Default 25000")
+    parser.add_argument("-c", "--min-chain-score", type=int, default=1, required=False,
+                        help="Default 1 (i.e. all chains pass)")
     parser.add_argument("-t", "--threads", type=int, default=1, required=False, help="Number of threads to use")
+    parser.add_argument("-k", "--kmer-length", type=int, default=21, required=False,
+                        help="Must match index. Default 21.")
+    parser.add_argument("-w", "--window-size", type=int, default=10, required=False,
+                        help="Must match index. Default 10.")
     parser.add_argument("-d", "--debug-read", default=None, required=False, help="Set to fasta ID of a read in order "
                                                                                  "to debug a specific read")
 

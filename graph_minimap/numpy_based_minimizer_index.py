@@ -9,12 +9,11 @@ import sqlite3
 
 #"@jit(nopython=True)
 def get_hits_for_multiple_minimizers(minimizers, minimizer_read_offsets, hasher_array, hash_to_index_pos, hash_to_n_minimizers, chromosomes,
-                                     linear_ref_pos, nodes, offsets):
+                                     linear_ref_pos, nodes, offsets, min_chain_score=1,
+                                     skip_minimizers_more_frequent_than=25000):
     """
     Ugly function that performs fast numpy chaining.
     """
-    minimum_anchors_in_chain = 1
-    skip_minimizers_with_more_than_hits = 25000
     max_distance_between_anchors_within_same_chain = 160
 
     # Get all anchors
@@ -25,7 +24,7 @@ def get_hits_for_multiple_minimizers(minimizers, minimizer_read_offsets, hasher_
 
     index_positions = hash_to_index_pos[hashes]
     lengths = hash_to_n_minimizers[hashes]
-    indexes_few_hits = lengths < skip_minimizers_with_more_than_hits
+    indexes_few_hits = lengths < skip_minimizers_more_frequent_than
     index_positions = index_positions[indexes_few_hits]
     minimizer_read_offsets = minimizer_read_offsets[indexes_few_hits]
     lengths = lengths[indexes_few_hits]
@@ -108,7 +107,7 @@ def get_hits_for_multiple_minimizers(minimizers, minimizer_read_offsets, hasher_
 
 
     # Get the chains that we found, keep only those with high enough score
-    accepted_chain_indexes = (chain_chromosomes != 0) & (chain_scores >= minimum_anchors_in_chain)
+    accepted_chain_indexes = (chain_chromosomes != 0) & (chain_scores >= min_chain_score)
 
     chain_chromosomes = chain_chromosomes[accepted_chain_indexes]
     chain_scores = chain_scores[accepted_chain_indexes]
